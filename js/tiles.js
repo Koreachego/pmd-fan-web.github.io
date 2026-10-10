@@ -31,12 +31,14 @@ const Tiles = (() => {
     return m;
   }
   const OFFS = [[-1, -1, NW], [0, -1, N], [1, -1, NE], [1, 0, E], [1, 1, SE], [0, 1, S], [-1, 1, SW], [-1, 0, W]];
-  function maskAt(D, x, y, isWall) {
+  // 칸 종류: 0 벽, 1 바닥, 2·3 물·용암 (v0.100). same(이웃 칸 값) = 같은 지형으로 이을지
+  //  벽: 벽끼리 / 웅덩이: 웅덩이끼리 / 바닥: 벽이 아니면 (웅덩이 옆 바닥에 벽 테두리가 생기지 않게)
+  function maskAt(D, x, y, kind) {
     let m = 0;
     for (const [dx, dy, bit] of OFFS) {
       const nx = x + dx, ny = y + dy;
-      const nw = nx < 0 || ny < 0 || nx >= D.w || ny >= D.h || D.tiles[ny * D.w + nx] !== 1;
-      if (nw === isWall) m |= bit;
+      const v = nx < 0 || ny < 0 || nx >= D.w || ny >= D.h ? 0 : D.tiles[ny * D.w + nx];
+      if (kind === 0 ? v === 0 : kind === 1 ? v !== 0 : v === kind) m |= bit;
     }
     return reduce(m);
   }
@@ -170,9 +172,13 @@ const Tiles = (() => {
   function drawDtef(g, set, D) {
     const img = set.base.img, ts = img.width / 18;
     for (let y = 0; y < D.h; y++) for (let x = 0; x < D.w; x++) {
-      const isWall = D.tiles[y * D.w + x] !== 1;
-      const block = isWall ? 0 : 2;   // 벽, (물), 바닥
-      const i = filled(set, block, RULE_INDEX[maskAt(D, x, y, isWall)] ?? 7);
+      const kind = D.tiles[y * D.w + x];
+      if (kind >= 2) {   // 웅덩이: 바닥을 먼저 깔고 두 번째 지형(물·용암) 칸을 겹친다
+        const fi = filled(set, 2, RULE_INDEX[255]);
+        g.drawImage(img, (12 + fi % 6) * ts, Math.floor(fi / 6) * ts, ts, ts, x * TILE, y * TILE, TILE, TILE);
+      }
+      const block = kind === 0 ? 0 : kind === 1 ? 2 : 1;   // 벽, 물·용암, 바닥
+      const i = filled(set, block, RULE_INDEX[maskAt(D, x, y, kind)] ?? 7);
       const col = block * 6 + i % 6, row = Math.floor(i / 6);
       const sx = col * ts, sy = row * ts, dx = x * TILE, dy = y * TILE;
       g.drawImage(img, sx, sy, ts, ts, dx, dy, TILE, TILE);
@@ -225,7 +231,7 @@ const Tiles = (() => {
   function drawProcedural(g, D) {
     const [wall, wallEdge, floorA, floorB] = D.dg.pal;
     const deco = DECO[D.dg.id] || 'pebble';
-    const fl = (x, y) => x >= 0 && y >= 0 && x < D.w && y < D.h && D.tiles[y * D.w + x] === 1;
+    const fl = (x, y) => x >= 0 && y >= 0 && x < D.w && y < D.h && D.tiles[y * D.w + x] !== 0;   // 벽이 아닌 칸 (웅덩이는 바닥 위에 따로 그린다)
     // 바닥
     for (let y = 0; y < D.h; y++) for (let x = 0; x < D.w; x++) {
       if (!fl(x, y)) continue;
@@ -237,6 +243,22 @@ const Tiles = (() => {
       if (!fl(x, y - 1)) { g.fillStyle = 'rgba(0,0,0,0.22)'; g.fillRect(px, py, TILE, 5); }
       if (!fl(x - 1, y)) { g.fillStyle = 'rgba(0,0,0,0.12)'; g.fillRect(px, py, 3, TILE); }
       if (hash(x, y, 31) < 0.14) drawDeco(g, deco, px, py, hash(x, y, 32), hash(x, y, 33), D.dg.pal);
+    }
+    // 물·용암 웅덩이 (v0.100): 둥근 웅덩이 모양 + 물결/불꽃 무늬
+    const liq = (x, y) => x >= 0 && y >= 0 && x < D.w && y < D.h && D.tiles[y * D.w + x] >= 2;
+    for (let y = 0; y < D.h; y++) for (let x = 0; x < D.w; x++) {
+      if (!liq(x, y)) continue;
+      const lava = D.tiles[y * D.w + x] === 3, px = x * TILE, py = y * TILE, r = 6;
+      const n = liq(x, y - 1), s = liq(x, y + 1), w = liq(x - 1, y), e = liq(x + 1, y);
+      g.fillStyle = lava ? '#e2531f' : '#3f86d6';
+      g.beginPath();
+      const tl = !n && !w ? r : 0, tr = !n && !e ? r : 0, br = !s && !e ? r : 0, bl = !s && !w ? r : 0;
+      g.moveTo(px + tl, py); g.lineTo(px + TILE - tr, py); g.arcTo(px + TILE, py, px + TILE, py + tr, tr);
+      g.lineTo(px + TILE, py + TILE - br); g.arcTo(px + TILE, py + TILE, px + TILE - br, py + TILE, br);
+      g.lineTo(px + bl, py + TILE); g.arcTo(px, py + TILE, px, py + TILE - bl, bl);
+      g.lineTo(px, py + tl); g.arcTo(px, py, px + tl, py, tl); g.closePath(); g.fill();
+      g.strokeStyle = lava ? '#ffb347' : 'rgba(255,255,255,0.45)'; g.lineWidth = 1;
+      for (let k = 0; k < 2; k++) { const cx = px + 4 + hash(x, y, 80 + k) * 14, cy = py + 6 + k * 9; g.beginPath(); g.moveTo(cx - 3, cy); g.quadraticCurveTo(cx, cy - 2, cx + 3, cy); g.stroke(); }
     }
     // 벽: 바닥과 맞닿은 바깥 모서리는 둥글게
     const R = 7;

@@ -85,6 +85,7 @@ const MOVE_DESC_FILL = {
 };
 for (const [id, d] of Object.entries(MOVE_DESC_FILL)) if (DATA.moves[id] && !DATA.moves[id].d) DATA.moves[id].d = d;
 // 새로 넣은 변화 기술 (js/extramoves.js)
+rule([580], { setTerrain: 'grassy' }); rule([581], { setTerrain: 'misty' }); rule([604], { setTerrain: 'electric' }); rule([678], { setTerrain: 'psychic' });   // 필드 (v0.100)
 rule([240], { setWx: 'rain' }); rule([241], { setWx: 'sun' }); rule([201], { setWx: 'sand' }); rule([883], { setWx: 'snow' });
 rule([182], { protect: true });
 rule([156], { rest: true });
@@ -339,6 +340,12 @@ if (DATA.species[800] && !DATA.species[1248]) {
 if (DATA.species[421] && !DATA.species[1246]) {
   DATA.species[1246] = { ...DATA.species[421], n: '체리꼬 (포지폼)', e: 'Cherrim (Sunshine Form)', v: [], f: [421, '0001'], fc: 'battle', fi: 'cherrim-sunshine',
     cr: ['CHUNSOFT, Caitemis', 'CHUNSOFT, Emmuffin'], em: 'NACDZHJPSUW', sem: 'NACDZHJPSUW' };
+}
+// 테라파고스 스텔라폼 (v0.100): 스텔라결정을 지니면. 걷는 그림이 아직 없어 테라스탈폼(1243)의 그림을 빌려 쓴다 (초상화는 스텔라폼). 번호는 tools/form_ids.json
+if (!DATA.abilities[306]) DATA.abilities[306] = { n: '제로포밍', d: '테라파고스가 스텔라폼이 되었을 때 숨겨진 힘으로 날씨와 필드의 영향을 모두 없앤다.' };
+if (DATA.species[1024] && !DATA.species[1249]) {
+  DATA.species[1249] = { ...DATA.species[1024], n: '테라파고스 (스텔라폼)', e: 'Terapagos (Stellar Form)', t: [1], b: [160, 105, 110, 130, 110, 85], ab: [[306, 0]], v: [],
+    f: [1024, '0002'], fc: 'item', fi: 'terapagos-stellar', sb: 1243, cr: ['G〜, JFain', '?'], em: 'N', sem: '' };
 }
 rule([462], { pow: 'crush', text: '위력 = 120 × 상대의 남은 HP 비율 (HP가 가득이면 120).' });
 rule([717], { text: '던전에서는 상대 HP를 절반으로 줄이는 대신 위력 90으로 공격한다.' });

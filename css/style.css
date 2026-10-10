@@ -875,3 +875,23 @@ body.phone-land #auto-ind, body.phone-land #wind-ind { left: 50%; transform: tra
 .gift-pips { letter-spacing: 1px; color: #ffd76a; font-size: 12px; }
 .gift-left { font-size: 13px; }
 .gift-total { margin-left: auto; font-size: 12px; }
+
+/* 얼루기 교환소 (v0.100) */
+.exch-row { background: rgba(255, 200, 90, .08); border: 1px solid rgba(255, 200, 90, .35); border-radius: 8px; padding: 6px 8px; margin-bottom: 8px; }
+.gacha-res .row { padding: 4px 6px; }
+.gacha-rare { background: rgba(255, 215, 0, .18); border-radius: 6px; font-weight: bold; }
+/* 팀 프리셋 (v0.100) */
+.team-mon { position: relative; display: inline-block; margin-right: 3px; }
+.team-mon.lead .portrait { outline: 2px solid var(--accent); border-radius: 6px; }
+.team-mon i { position: absolute; right: -3px; top: -6px; font-style: normal; font-size: 11px; color: var(--accent); }
+.sig-lv { color: var(--accent); }
+/* 위험 신호 (v0.100): HP 1/4 이하·배고픔 0 — HUD의 그 칸과 던전 화면 UI 상자(HUD·메시지·얼굴 등)의 테두리가 빨갛게 깜빡인다 */
+@keyframes danger-pulse { 0%, 100% { background: #ff303000; box-shadow: none; } 50% { background: #ff303055; box-shadow: 0 0 0 2px #ff4a4a; } }
+@keyframes danger-border { 0%, 100% { border-color: var(--t-cream); } 50% { border-color: #ff3b3b; } }
+#hud .hpwrap.danger, #hud .belly.danger { border-radius: 6px; padding: 1px 6px; animation: danger-pulse 1s ease-in-out infinite; }
+#dungeon-screen.danger .pmd-box { animation: danger-border 1s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { #hud .hpwrap.danger, #hud .belly.danger, #dungeon-screen.danger .pmd-box { animation-duration: 2.4s; } }
+/* 창고 줄 (v0.100): 버튼이 많은 줄(이상한사탕 등)에서도 이름이 글자마다 줄바꿈되지 않게 — 이름 칸은 최소 너비를 두고, 버튼은 줄어들지 않는다 */
+.store-list .row { flex-wrap: wrap; }
+.store-list .row .store-name { min-width: 7em; }
+.store-list .row > .btn { flex-shrink: 0; }

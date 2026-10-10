@@ -134,6 +134,11 @@ function weatherRaw() {
   if (typeof Dungeon !== 'undefined' && Dungeon.floor && abilityOf(Dungeon.floor.player).cloudNine) return null;
   return CUR_WEATHER;
 }
+// 필드 (v0.100, js/defs.js TERRAINS): 땅에 있는 포켓몬만 (비행 타입·부유 특성은 떠 있다)
+const grounded = c => !!c && !(c.types || []).includes(3) && !abilityOf(c).levitate;
+const terrainNow = () => CUR_TERRAIN;
+const terrainOn = (c, t) => CUR_TERRAIN === t && grounded(c);
+const TERRAIN_PULSE = 805, EXPANDING_FORCE = 797, MISTY_EXPLOSION = 802, QUAKE_MOVES = [89, 523, 222];
 function weatherNow() {
   if (!CUR_WEATHER) return null;
   if (WEATHERS[CUR_WEATHER] && WEATHERS[CUR_WEATHER].base) return weatherRaw() && WEATHERS[CUR_WEATHER].base;
@@ -164,14 +169,14 @@ function ivyType(att, move) {
   const s = DATA.species[looksOf(att)];
   return (s && s.f && s.f[0] === 1017 && s.t.find(t => t !== 12)) || move.t;
 }
-function moveType(att, move) { const A = abilityOf(att), t = ivyType(att, move); return A.normalize && t ? 1 : A.soundType && hasFlag(move, 9) ? A.soundType : A.skin && t === 1 ? A.skin : t; }
+function moveType(att, move) { const A = abilityOf(att), t = move.id === TERRAIN_PULSE && CUR_TERRAIN && grounded(att) ? TERRAINS[CUR_TERRAIN].type : ivyType(att, move); return A.normalize && t ? 1 : A.soundType && hasFlag(move, 9) ? A.soundType : A.skin && t === 1 ? A.skin : t; }
 function bestStatKey(c) { return ['atk', 'def', 'spa', 'spd'].reduce((b, k) => (c[k] > c[b] ? k : b), 'atk'); }
 
 // 플라워기프트: 쾌청이면 같은 편(탐험대끼리, 적끼리)에 플라워기프트를 가진 포켓몬이 있으면 공격·특수방어 1.5배 (v0.99)
 function flowerGiftAlly(c) {
-  if (weatherNow() !== 'sun' || typeof Dungeon === 'undefined' || !Dungeon.floor) return false;
+  if (typeof Dungeon === 'undefined' || !Dungeon.floor) return false;
   const F = Dungeon.floor, mine = !!(c.player || c.ally);
-  return [F.player, ...F.mons].some(o => o && o !== c && o.hp > 0 && !o.npc && !!(o.player || o.ally) === mine && abilityOf(o).flowerGift);
+  return [F.player, ...F.mons].some(o => o && o !== c && o.hp > 0 && !o.npc && !!(o.player || o.ally) === mine && abilityOf(o).flowerGift && wxFor(o) === 'sun');   // 햇살꽃잎을 지닌 체리꼬는 늘
 }
 // 특성에 의한 능력치 배율 (brk: 틀깨기 등으로 공격받는 쪽이면 방어 특성 배율을 무시한다, v0.99)
 function statMul(c, key, brk) {
@@ -223,6 +228,16 @@ function powerMul(att, def, move, mt, A) {
   if (A.rival && def.types.some(t => att.types.includes(t))) m *= 1.25;
   if (A.vsTypeMul) for (const t of def.types) if (A.vsTypeMul[t]) m *= A.vsTypeMul[t];
   if (att.flashFire && mt === 10) m *= 1.5;
+  // 필드: 땅에 있는 쪽이 그 타입 기술 1.3배 (그래스·일렉트릭·사이코), 미스트필드는 땅에 있는 상대가 받는 드래곤 기술 절반, 그래스필드는 지진 등 절반
+  if (CUR_TERRAIN) {
+    const T = TERRAINS[CUR_TERRAIN];
+    if (CUR_TERRAIN !== 'misty' && mt === T.type && grounded(att)) m *= 1.3;
+    if (CUR_TERRAIN === 'misty' && mt === 16 && def && grounded(def)) m *= 0.5;
+    if (CUR_TERRAIN === 'grassy' && QUAKE_MOVES.includes(move.id) && def && grounded(def)) m *= 0.5;
+    if (move.id === TERRAIN_PULSE && grounded(att)) m *= 2;   // 대지의파동: 필드가 있으면 위력 2배 (타입도 필드 타입, moveType)
+    if (move.id === EXPANDING_FORCE && CUR_TERRAIN === 'psychic' && grounded(att)) m *= 1.5;
+    if (move.id === MISTY_EXPLOSION && CUR_TERRAIN === 'misty' && grounded(att)) m *= 1.5;
+  }
   return m;
 }
 // 방어 측 데미지 배율
@@ -286,6 +301,7 @@ function calcHit(att, def, move) {
   const power = move.p * powerMul(att, def, move, mt, A) * (phys ? Ha.physMul || 1 : Ha.specMul || 1) * ((Ha.typeMul && Ha.typeMul[mt]) || 1) * (Ha.lifeOrb ? 1.3 : 1);
   let dmg = Math.floor(Math.floor(Math.floor(2 * att.lv / 5 + 2) * power * Atk / Def) / 50) + 2;
   if (mt && (att.types.includes(mt) || A.protean)) dmg *= A.adapt ? 2 : 1.5;
+  if (Ha.stabMul && mt && att.types.includes(mt)) dmg *= Ha.stabMul;   // 전용 도구(진화의리본 등): 자기 타입 기술 강화
   dmg *= eff;
   if (Ha.seBoost && eff > 1) dmg *= Ha.seBoost;
   if (A.neuroforce && eff > 1) dmg *= 1.25;   // 브레인포스

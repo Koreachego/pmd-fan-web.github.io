@@ -69,10 +69,10 @@ ab_(2, { typeMul: { 11: 1.3 }, dungeon: '날씨가 없어서 대신 물 기술�
 ab_([45, 245], { typeMul: { 6: 1.3 }, dungeon: '날씨가 없어서 대신 바위 기술의 위력이 1.3배.' });
 ab_(117, { typeMul: { 15: 1.3 }, dungeon: '날씨가 없어서 대신 얼음 기술의 위력이 1.3배.' });
 ab_(159, { typeMul: { 5: 1.2, 6: 1.2, 9: 1.2 }, dungeon: '모래바람이 없어도 땅·바위·강철 기술의 위력이 1.2배.' });
-ab_(226, { typeMul: { 13: 1.3 }, dungeon: '필드 대신 전기 기술의 위력이 1.3배.' });
-ab_(227, { typeMul: { 14: 1.3 }, dungeon: '필드 대신 에스퍼 기술의 위력이 1.3배.' });
-ab_(228, { resist: { 16: 0.5 }, dungeon: '필드 대신 드래곤 기술에 받는 데미지가 절반.' });
-ab_(229, { typeMul: { 12: 1.3 }, dungeon: '필드 대신 풀 기술의 위력이 1.3배.' });
+ab_(226, { setTerrain: 'electric', dungeon: '층에 들어서거나(탐험대) 처음 마주치면(적) 발밑을 일렉트릭필드로 바꾼다.' });
+ab_(227, { setTerrain: 'psychic', dungeon: '층에 들어서거나(탐험대) 처음 마주치면(적) 발밑을 사이코필드로 바꾼다.' });
+ab_(228, { setTerrain: 'misty', dungeon: '층에 들어서거나(탐험대) 처음 마주치면(적) 발밑을 미스트필드로 바꾼다.' });
+ab_(229, { setTerrain: 'grassy', dungeon: '층에 들어서거나(탐험대) 처음 마주치면(적) 발밑을 그래스필드로 바꾼다.' });
 ab_(94, { spaMul: 1.3, dungeon: '날씨가 없어서 HP 감소 없이 특수공격이 1.3배.' });
 ab_([57, 58], { spaMul: 1.2, dungeon: '동료가 없으므로 항상 특수공격이 1.2배.' });
 ab_(282, { bestStatMul: 1.3, dungeon: '가장 높은 능력(공격·방어·특공·특방)이 항상 1.3배. (던전에는 일렉트릭필드가 없어서 늘 발동)' });
@@ -293,6 +293,7 @@ ab_(253, { contact: { dmg: 8 }, dungeon: '접촉한 적은 최대 HP의 1/8 데�
 ab_(261, { cureChance: 0.3, dungeon: '턴마다 30% 확률로 상태이상이 낫는다.' });   // 기묘한약
 ab_(279, { atkMul: 1.1, spaMul: 1.1, dungeon: '지휘 능력으로 공격과 특수공격이 1.1배.' });   // 사령탑
 ab_(290, { floorStart: [[2, 1], [4, 1]], dungeon: '층에 들어설 때마다 공격과 특수공격이 오른다.' });   // 편승 (v0.95: 불요의검과 같던 효과를 공격·특수공격으로)
+ab_(306, { clearField: true, dungeon: '층에 들어서거나(탐험대) 처음 마주치면(적) 날씨와 필드를 모두 없앤다.' });   // 제로포밍 (테라파고스 스텔라폼)
 ab_(305, { fullHpHalf: true, dungeon: 'HP가 가득 차 있으면 받는 데미지가 절반.' });   // 테라셸
 
 // ── 추가 재해석 ──
@@ -351,7 +352,7 @@ ABIL[142] = { ...ABIL[142], chipImmune: true, dungeon: '가루 기술, 독가시
 
 // 날씨에 따라 달라지는 특성 값
 function abVal(c, key) {
-  const A = abilityOf(c), W = A.wx && weatherNow() === A.wx.w ? A.wx : null;
+  const A = abilityOf(c), W = A.wx && wxFor(c) === A.wx.w ? A.wx : null;   // 날씨 고정 전용 도구도 (js/defs.js wxFor)
   return W && W[key] != null ? W[key] : A[key];
 }
 
@@ -458,10 +459,17 @@ function abilityExact(r) {
   if (r.speedMul) o.push(`스피드 ${x(r.speedMul)}`);
   return o.join(' / ');
 }
+// 리더 특성의 필드 효과 (소드·실드까지의 첫 번째 포켓몬 효과처럼): 리더가 이 특성이면
+//   lure: 그 타입 포켓몬이 LURE_W배 잘 나온다 (그 층에 나오는 포켓몬 중에서) / drop: 적이 물건을 떨어뜨리는 확률 배수
+const LURE_W = 2;
+const FIELD_ABIL = { 18: { lure: 10 }, 114: { lure: 11 }, 9: { lure: 13 }, 31: { lure: 13 }, 42: { lure: 9 }, 139: { lure: 12 }, 14: { drop: 2 }, 105: { drop: 2 } };
+const leadField = c => (c && FIELD_ABIL[c.ability]) || {};
+const fieldText = id => { const f = FIELD_ABIL[id]; return !f ? '' : f.lure ? `리더일 때 ${typeName(f.lure)} 타입 포켓몬이 ${LURE_W}배 잘 나온다` : `리더일 때 적이 물건을 떨어뜨리는 확률 ${f.drop}배`; };
 function abilityDesc(id) {
-  const a = DATA.abilities[id], r = ABIL[id];
-  const dungeon = r ? r.dungeon || '' : '';
-  return { n: a?.n || '?', d: a?.d || '', dungeon, exact: dungeon ? '' : abilityExact(r), none: !r };
+  const a = DATA.abilities[id], r = ABIL[id], fx = fieldText(id);
+  const dungeon = r ? r.dungeon || '' : '', exact = dungeon ? '' : abilityExact(r);
+  const add = s => [s && s.replace(/\.$/, ''), fx].filter(Boolean).join('. ');
+  return { n: a?.n || '?', d: a?.d || '', dungeon: dungeon && add(dungeon), exact: dungeon ? '' : add(exact), none: !r && !fx };
 }
 function abilityHtml(id, hidden) {
   const x = abilityDesc(id);

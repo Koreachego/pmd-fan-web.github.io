@@ -26,6 +26,9 @@ const Game = (() => {
   // 저장된 특성이 그 포켓몬의 것이 아니면 기본 특성으로
   // ── 동료: 영입한 포켓몬 중 최대 PARTY_MAX마리를 데리고 일반·테마 던전에 간다 (각자 레벨) ──
   const PARTY_MAX = 3;
+  // 별명 (v0.100): 영입한 포켓몬마다 이름을 붙일 수 있다 (roster[sp].nick, 진화해도 그대로). 없으면 포켓몬 이름
+  const NICK_MAX = 10;
+  const monName = id => (save && save.roster && save.roster[id] && save.roster[id].nick) || spName(id);
   const partyList = () => (save.party || []).filter(sp => save.roster[sp] && sp !== save.current).slice(0, PARTY_MAX);
   function makePartner(sp) {
     const ch = save.roster[sp];
@@ -107,7 +110,8 @@ const Game = (() => {
     s.settings = { fast: false, autoDescend: false, ...(s.settings || {}) };
     s.bag = s.bag || []; s.storage = s.storage || {}; s.cleared = s.cleared || {}; s.best = s.best || {};
     s.missions = s.missions || { board: [], accepted: [] }; s.missions.board = s.missions.board || []; s.missions.accepted = s.missions.accepted || [];
-    s.shop = s.shop || []; s.money = Math.max(0, Math.floor(+s.money || 0));   // 소수점이 된 돈은 내림 (v0.99: 단계 사이 칸 수의 확장 비용) s.day = s.day || 1; s.clears = s.clears || {};
+    s.shop = s.shop || []; s.day = s.day || 1; s.clears = s.clears || {};
+    s.money = Math.max(0, Math.floor(+s.money || 0));   // 소수점이 된 돈은 내림 (v0.99: 단계 사이 칸 수의 확장 비용)
     s.bagMax = s.bagMax || Math.max(BAG_BASE, s.bag.length);
     // v0.44: 창고 기본 40 → 300칸. 확장한 단계는 그대로 이어진다 (예: 120칸 = 4단계 → 380칸)
     // v0.50: 진화 전 모습에 남아 있던 숙련도를 지금 모습으로 (진화 전 모습이 따로 목록에 있으면 그대로 둔다)
@@ -119,7 +123,17 @@ const Game = (() => {
       ch.lv = ch.lv || START_LEVEL; ch.exp = ch.exp ?? expFor(ch.lv); ch.moves = (ch.moves || []).filter(m => DATA.moves[m]);
       if (!ch.moves.length) ch.moves = defaultMoves(+sp, ch.lv);
     }
+    // v0.100: 빛나는부적은 도감 완성 업적만 있으면 늘 적용 (지니지 않아도). 가지고 있던 부적은 거두고, 업적 보상 1개 말고 상점에서 산 것은 값을 돌려준다
+    if (!s.charmV0100) {
+      s.soldLog = (s.soldLog || []).filter(e => e.id !== 'shinycharm');
+      let n = (s.storage.shinycharm || 0) + s.bag.filter(b => b.id === 'shinycharm').reduce((a, b) => a + (b.n || 1), 0);
+      delete s.storage.shinycharm; s.bag = s.bag.filter(b => b.id !== 'shinycharm');
+      for (const ch of Object.values(s.roster || {})) if (ch.held === 'shinycharm') { ch.held = null; n++; }
+      if (n > 1) s.money += (n - 1) * SHINY_CHARM_PRICE;
+      s.charmV0100 = true;
+    }
     s.bag = s.bag.filter(b => ITEMS[b.id]);
+    if (s.run && Array.isArray(s.run.bag)) s.run.bag = s.run.bag.filter(b => b && ITEMS[b.id]);   // 이어 하던 탐험의 가방도 (없어진 물건: 빛나는부적 등)
     for (const id of Object.keys(s.storage)) if (!ITEMS[id]) delete s.storage[id];
   }
   function migrateSave(s, raw) {
@@ -655,10 +669,10 @@ const Game = (() => {
       <p class="dim tiny">총 ${total}명 · ${esc(r.day)} 기준 (하루에 한 번 갱신) · 로그인한 탐험대가 처음 고른 포켓몬만 세요 (v0.33부터 시작한 탐험대).</p>`);
   }
 
-  async function sosBoard() {
+  async function sosBoard(force) {
     if (!Online.loggedIn()) return accountDialog();
     let list;
-    try { list = await Online.listSOS(); } catch (e) { UI.alert('📋 구조 게시판', `<p>${esc(Online.why(e))}</p>`); return; }
+    try { list = await Online.listSOS(force === true); } catch (e) { UI.alert('📋 구조 게시판', `<p>${esc(Online.why(e))}</p>`); return; }
     list = list.filter(s => dungeonById(s.dungeon) && hasKey(DATA.species, s.sp) && Number.isInteger(s.floor) && Number.isInteger(s.lv) && s.lv >= 1 && s.lv <= MAX_LEVEL)
       .map(s => ({ ...s, sp: +s.sp, name: Online.cleanName(s.name), created: +s.created || Date.now(), floor: Math.min(+s.floor || 1, dungeonById(s.dungeon)?.floors || 99) }));   // 층수가 줄어든 던전의 예전 요청은 마지막 층으로 보인다
     const taken = sid => !!((save.rescued || {})[sid] || save.missions.accepted.some(m => m.sosId === sid));
@@ -672,9 +686,9 @@ const Game = (() => {
     });
     UI.open({
       title: '📋 구조 게시판', wide: true,
-      html: `<p class="dim">구조 요청 중 가장 오래 기다린 ${list.length || ''}건. 누가 구조하러 가면 30분 동안 다른 사람에게는 보이지 않아요 (구조하러 던전에 들어가 있는 동안은 연장).
+      html: `<p class="dim">최근 30분 안의 구조 요청 중 가장 오래 기다린 ${list.length || ''}건 (30분이 지나면 구린내 탐험대가 구조해요). 누가 구조하러 가면 30분 동안 다른 사람에게는 보이지 않아요 (구조하러 던전에 들어가 있는 동안은 연장).
         구조 임무는 한 번에 ${ONLINE_RESCUE_MAX}개까지 받을 수 있어요.</p>${rows.join('') || '<p>지금은 구조를 기다리는 탐험대가 없어요.</p>'}`,
-      choices: [{ label: '🔄 새로고침', fn: sosBoard }, { label: '닫기', fn: () => {} }],
+      choices: [{ label: '🔄 새로고침', fn: () => sosBoard(true) }, { label: '닫기', fn: () => {} }],
       onOpen: (box, m) => box.querySelectorAll('[data-sos]').forEach(b => { b.onclick = () => {
         const s = list.find(x => x.id === b.dataset.sos); if (!s) return;
         UI.close(m);
@@ -689,7 +703,28 @@ const Game = (() => {
   }
 
   // ───────────────────────── 시작 화면 ─────────────────────────
+  // ── 앱으로 설치 (PWA, v0.100): 서비스 워커(sw.js)가 게임 파일과 본 그림을 보관해서 인터넷 없이도 플레이 ──
+  let installEvt = null;
+  const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  function initPWA() {
+    if ('serviceWorker' in navigator && (location.protocol === 'https:' || ENV !== 'dev' || /[?&]sw/.test(location.search))) navigator.serviceWorker.register('sw.js').catch(() => {});
+    window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; if (save && tab === 'info') renderTown(); });
+    window.addEventListener('appinstalled', () => { installEvt = null; UI.toast('📲 앱으로 설치했어요! 바탕화면·홈 화면에서 실행할 수 있어요.'); });
+  }
+  function installHtml() {
+    if (isStandalone()) return '<div class="row"><span class="grow">📲 앱으로 실행 중이에요. 한 번 본 화면과 그림은 인터넷이 없어도 나와요.</span></div>';
+    return `<div class="row"><span class="grow">📲 앱으로 설치하면 바탕화면·홈 화면에서 바로 실행하고, <b>인터넷이 없어도</b> 플레이할 수 있어요. <span class="dim">(처음 보는 포켓몬 그림과 로그인·구조 게시판 같은 온라인 기능은 인터넷이 필요해요. 세이브는 웹과 같아요)</span></span>
+      <button class="btn sm" data-act="install">${installEvt ? '설치하기' : '설치 방법'}</button></div>`;
+  }
+  async function installApp() {
+    if (installEvt) { installEvt.prompt(); const r = await installEvt.userChoice.catch(() => null); if (r && r.outcome === 'accepted') installEvt = null; renderTown(); return; }
+    UI.alert('📲 앱으로 설치', isIOS()
+      ? '<p>아이폰·아이패드: Safari 아래쪽의 <b>공유 버튼(□↑)</b> → <b>홈 화면에 추가</b>를 누르세요.</p>'
+      : '<p>PC(크롬·엣지): 주소창 오른쪽의 <b>설치 아이콘(⊕)</b>을 누르거나, 메뉴(⋮) → <b>앱 설치</b> / <b>앱 → 이 사이트를 앱으로 설치</b>를 누르세요.</p><p>안드로이드: 크롬 메뉴(⋮) → <b>홈 화면에 추가</b> 또는 <b>앱 설치</b>를 누르세요.</p><p class="dim">이미 설치했다면 바탕화면·홈 화면의 아이콘으로 실행하세요.</p>');
+  }
   function boot() {
+    initPWA();
     Dungeon.init();
     save = load();
     if (save) fitFloors(save);
@@ -823,7 +858,7 @@ const Game = (() => {
     const pool = SHOP_POOL.filter(i => !SHOP_FIXED.includes(i));
     while (stock.size < 8) stock.add(pick(pool));
     const held = HELD_SHOP_POOL.slice().sort(() => Math.random() - 0.5).slice(0, 3);
-    if (Math.random() < SIG_SHOP_CHANCE) held.push(pick(SIG_ITEMS));   // 전용 도구는 가끔 하나
+    if (Math.random() < SIG_SHOP_CHANCE) held.push(pick(SIG_FIELD_ITEMS));   // 전용 도구는 가끔 하나
     // 기술머신 SHOP_TM_N개: 고른 분류(변화·물리·특수)가 있으면 그 분류에서만
     const cat = SHOP_TM_CAT[save.tmFocus];
     const tms = TM_IDS.filter(id => !cat || DATA.moves[ITEMS[id].mv].c === cat).sort(() => Math.random() - 0.5).slice(0, SHOP_TM_N);
@@ -1043,6 +1078,7 @@ const Game = (() => {
     // 푸크린: 해맑은 길드장 (친구친구~) · 페라페: 깐깐한 조수 (에헴, ~하도록!) — 이야기(js/scenes.js)의 말투와 같게
     dungeon: [40, '푸크린', ['친구친구~! 오늘은 어디로 탐험 갈 거야~?', '던전은 들어갈 때마다 모양이 바뀌어~ 그래서 매일 새롭고 재밌지~!', '출발하기 전에 가방 확인~! 사과 챙겼어~? 나는 벌써 다 먹었어~', '동료랑 같이 가면 훨씬 든든해~ 친구는 많을수록 좋은걸~!', '돌아오면 꼭 얘기해 줘~! 야아앗~!!']],
     mission: [441, '페라페', ['에헴! 의뢰 게시판이다. 오늘도 새 의뢰가 잔뜩 붙어 있다!', '임무를 받아 두면 그 층에서 대상을 만날 수 있다. 받은 임무는 끝까지 해내도록!', '의뢰를 해내면 탐험대 포인트가 쌓인다. 랭크가 오르면 받을 수 있는 임무도 늘지!', '구조를 기다리는 탐험대도 있다! 길드의 이름을 걸고 구하러 가도록!', '수배범은 만만치 않다. 방심하지 말도록! …길드장님처럼 사과만 생각하면 곤란하다.']],
+    exchange: [327, '얼루기', ['빙글빙글~ 쓰지 않는 도구는 여기서 티켓으로 바꿔요!', '티켓을 모아서 뽑기를 해 봐요~ 무지개구미가 나올지도?', '삐딱구리는 전용 도구를 티켓과 바꿔 준대요~']],
     shop: [352, '켈리몬', ['어서 오세요! 켈리몬 상점입니다~', '진열은 날이 바뀌면 새로 바뀌어요~', '필요 없는 물건은 팔아도 괜찮아요~']],
     storage: [115, '캥카', ['맡길 물건이 있나요? 소중히 보관해 둘게요.', '가방이 가득 차면 여기에 맡겨 두세요.', '자동 판매를 켜 두면 필요 없는 물건은 바로 팔아 드려요.']],
     bag: [113, '럭키', ['가방 정리는 탐험의 기본이에요!', '회복 아이템은 넉넉히 챙겨 가세요!', '빠른사용에 자주 쓰는 아이템을 등록해 두면 편해요.']],
@@ -1076,7 +1112,7 @@ const Game = (() => {
     un.hidden = !updateVer; un.textContent = updateVer ? `🔔 새 버전 v${updateVer} — 눌러서 새로고침` : '';
     document.getElementById('char-card').innerHTML = `
       <div class="cc-top">${portraitImg(sp, 'portrait big', 'Normal', ch.shiny)}
-        <div><div class="cc-name">${esc(d.n)} ${medalIcons(sp)}</div><div class="dim">No.${dexNo(sp)} ${esc(d.e)}</div><div>${typeBadges(d.t)}</div><div class="cc-rank">${rankBadge()}</div>
+        <div><div class="cc-name">${esc(monName(sp))} ${medalIcons(sp)}</div>${ch.nick ? `<div class="dim tiny">${esc(d.n)}</div>` : ''}<div class="dim">No.${dexNo(sp)} ${esc(d.e)}</div><div>${typeBadges(d.t)}</div><div class="cc-rank">${rankBadge()}</div>
         <div class="cc-lv">Lv <b>${ch.lv}</b></div></div></div>
       <details class="cc-more"${(ccOpen ?? !matchMedia('(max-width: 800px)').matches) ? ' open' : ''}><summary>능력치 · 특성 · 기술 보기</summary>
       <div class="bar-l">EXP <span class="bar"><i style="width:${ch.lv >= MAX_LEVEL ? 100 : clamp(have / need * 100, 0, 100)}%;background:#6cf"></i></span></div>
@@ -1084,14 +1120,14 @@ const Game = (() => {
         <tr><td>HP</td><td>${st.maxhp}</td><td>공격</td><td>${st.atk}</td></tr>
         <tr><td>방어</td><td>${st.def}</td><td>특공</td><td>${st.spa}</td></tr>
         <tr><td>특방</td><td>${st.spd}</td><td>스피드</td><td>${st.spe}</td></tr></table>
-      <div class="cc-ability">지닌 물건 ${ch.held ? `${ITEMS[ch.held].icon} <b>${esc(ITEMS[ch.held].n)}</b>` : '<span class="dim">없음</span>'}</div>
+      <div class="cc-ability">지닌 물건 ${ch.held ? `${ITEMS[ch.held].icon} <b>${esc(ITEMS[ch.held].n)}${sigLv(ch.held) ? ' +' + sigLv(ch.held) : ''}</b>` : '<span class="dim">없음</span>'}</div>
       <div class="cc-ability">특성 <span class="ab-link" data-ability="${entryAbility(sp, ch)}">${esc(abilityName(entryAbility(sp, ch)))}</span></div>
       <div class="cc-moves">${ch.moves.map(m => `<div class="move-row clickable" data-move="${m}" data-sp="${sp}" title="클릭하면 기술 설명">${moveLine(m)}${masteryStar(sp, m)}</div>`).join('') || '<div class="dim">배운 기술이 없습니다</div>'}</div></details>
       ${partyCard()}`;
     const det = document.querySelector('#char-card .cc-more'); det.ontoggle = () => { ccOpen = det.open; };
     document.querySelectorAll('#town-tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
     const el = document.getElementById('tab-content');
-    el.innerHTML = hostBar(tab) + ({ dungeon: tabDungeon, mission: tabMission, shop: tabShop, storage: tabStorage, bag: tabBag, char: tabChar, dex: Dex.render, ach: Progress.renderAch, info: tabInfo })[tab]();
+    el.innerHTML = hostBar(tab) + ({ dungeon: tabDungeon, mission: tabMission, shop: tabShop, exchange: tabExchange, storage: tabStorage, bag: tabBag, char: tabChar, dex: Dex.render, ach: Progress.renderAch, info: tabInfo })[tab]();
     if (tab === 'dex') Dex.wire(el);
     if (sameTab) { el.querySelectorAll('.store-list').forEach((e, i) => { if (keepLists[i]) e.scrollTop = keepLists[i]; }); if (Math.abs(window.scrollY - keepY) > 1) window.scrollTo(0, keepY); }
     renderedTab = tab;
@@ -1256,7 +1292,7 @@ const Game = (() => {
     // 보스
     const finals = bossPool(dg).length ? bossPool(dg) : BOSSES[dg.id] && DATA.species[BOSSES[dg.id]] ? [BOSSES[dg.id]] : [];
     const bossHtml = `<h3>보스</h3>
-      <div class="row"><span class="grow"><b>${dg.floors}층 (최종)</b> ${finals.length ? finals.map(spName).join(' / ') + (finals.length > 1 ? ' 중 하나' : '') : '그 층 후보 중 가장 강한 포켓몬'} · Lv${Math.min(MAX_LEVEL, floorLv(dg.floors) + 3)}</span></div>
+      <div class="row"><span class="grow"><b>${dg.floors}층 (최종)</b> ${finals.length ? finals.map(spName).join(' / ') + (finals.length > 1 ? ' 중 하나' : '') : '그 층 후보 중 가장 강한 포켓몬'} · Lv${Math.min(MAX_LEVEL, floorLv(dg.floors) + (BOSS_SOLO.has(dg.id) ? 0 : 3))}${BOSS_SOLO.has(dg.id) ? ' · 부하 없이 혼자' : ''}</span></div>
       ${finals.length ? mon(finals) : ''}
       ${midPool(dg).length ? `<div class="row"><span class="grow"><b>중간 보스 ${dg.mid.floors.join(', ')}층</b> 아래 중 하나씩 (한 탐험에서 겹치지 않음)</span></div>${mon(midPool(dg))}` : ''}
       ${dg.mode === 'rogue' ? '<p class="dim">10층마다 그 층 후보 중 가장 강한 포켓몬이 중간 보스로 나온다.</p>' : ''}
@@ -1335,10 +1371,116 @@ const Game = (() => {
         <button class="btn sm" data-act="take-mission" data-arg="${m.id}" ${acc.length >= missionMax() ? 'disabled' : ''}>수락</button></div>`).join('') || '<p class="dim">의뢰가 없습니다.</p>'}`;
   }
 
+  // ── 얼루기 교환소 (v0.100) ──
+  //  창고의 잡동사니 도구(isJunk) JUNK_PER_TICKET개 → 티켓 1장. 값싼 것부터 쓰고, 🔒을 걸어 둔 도구는 쓰지 않는다 (save.junkKeep)
+  //  티켓: 고정 교환(TICKET_TRADES) 또는 뽑기 1장(GACHA_TABLE). 받은 물건은 창고로 (자동 판매하지 않음)
+  const SIG_HOST = 453;   // 삐딱구리 (전용 도구 트레이드)
+  const junkKept = id => (save.junkKeep || []).includes(id);
+  const junkIds = () => Object.keys(save.storage).filter(id => save.storage[id] > 0 && isJunk(id)).sort((a, b) => sellOf(a) - sellOf(b) || byKind(a, b));
+  const junkCount = () => junkIds().filter(id => !junkKept(id)).reduce((s, id) => s + save.storage[id], 0);
+  function junkToTickets(n) {   // 티켓 n장만큼 잡동사니를 쓴다
+    let need = n * JUNK_PER_TICKET;
+    if (junkCount() < need) return false;
+    for (const id of junkIds()) {
+      if (junkKept(id) || !need) continue;
+      const k = Math.min(need, save.storage[id]);
+      save.storage[id] -= k; need -= k; if (save.storage[id] <= 0) delete save.storage[id];
+    }
+    save.tickets = (save.tickets || 0) + n;
+    return true;
+  }
+  function gachaRoll() {
+    const [w, list] = GACHA_TABLE[weighted(GACHA_TABLE.map((e, i) => [i, e[0]]))];
+    // 메가스톤 (v0.100): 아무거나가 아니라 미리 고른 메가스톤 (save.gachaMega). 아직 안 골랐으면 뽑은 뒤에 고른다 (save.megaPending)
+    const id = list[0] === '@mega' ? (ITEMS[save.gachaMega] ? save.gachaMega : '@mega') : list[0] === '@tm' ? pick(TM_IDS) : pick(list.filter(x => ITEMS[x]));
+    return { id, rare: w <= GACHA_RARE };
+  }
+  // 메가스톤 고르기 창 (포켓몬·스톤 이름으로 찾기). onPick(id)
+  function megaPicker(title, note, onPick, laterLabel) {
+    const list = MEGA_STONES.filter(id => ITEMS[id]).map(id => ({ id, n: ITEMS[id].n, to: ITEMS[id].formTo })).sort((a, b) => a.n.localeCompare(b.n, 'ko'));
+    const m = UI.open({
+      title, wide: true,
+      html: `<p>${note}</p><p><input class="mg-search" placeholder="포켓몬·스톤 이름으로 찾기" autocomplete="off"></p>
+        <div class="mg-list">${list.map(o => `<button class="btn ghost mg-item" data-mg="${o.id}" data-s="${esc((o.n + ' ' + (o.to ? spName(o.to) : '')).toLowerCase())}">${o.to ? portraitImg(o.to, 'portrait xs') : ''}<span><b>${esc(o.n)}</b><span class="dim">${o.to ? esc(spName(o.to)) : ''}${ownedCount(o.id) ? ` · 가지고 있음 ${ownedCount(o.id)}` : ''}</span></span></button>`).join('')}</div>`,
+      choices: [{ label: laterLabel || '닫기', fn: () => {} }],
+      onOpen: box => {
+        const q = box.querySelector('.mg-search');
+        q.addEventListener('input', () => { const v = q.value.trim().toLowerCase(); box.querySelectorAll('.mg-item').forEach(b => { b.hidden = !!v && !b.dataset.s.includes(v); }); });
+        box.querySelector('.mg-list').addEventListener('click', e => { const b = e.target.closest('[data-mg]'); if (!b) return; UI.close(m); onPick(b.dataset.mg); });
+        setTimeout(() => q.focus(), 50);
+      },
+    });
+  }
+  // 뽑기에서 나온 메가스톤 중 아직 고르지 않은 것 (뽑을 때 미리 골라 둔 것이 없었으면)
+  function megaPendingPick() {
+    if (!(save.megaPending > 0)) return;
+    megaPicker('💠 메가스톤 고르기', `뽑기에서 메가스톤이 나왔어요! 받을 메가스톤을 골라 주세요. <span class="dim">(남은 ${save.megaPending}개 · 나중에 교환 탭 뽑기에서 고를 수도 있어요)</span>`, id => {
+      save.megaPending--; storeKeep(id); persist(); renderTown(); Sound.fanfare('reward', 'achieve');
+      UI.toast(`${ITEMS[id].icon} ${jo(ITEMS[id].n, '을')} 받았어요! (창고로)`);
+      if (save.megaPending > 0) setTimeout(megaPendingPick, 300);
+    }, '나중에 고르기');
+  }
+  // 교환 탭: 얼루기(티켓 만들기·교환·뽑기) + 삐딱구리 트레이드(티켓 → 전용 도구)
+  let exView = 'junk';
+  function tabExchange() {
+    const tk = save.tickets || 0, jc = junkCount(), view = exView;
+    const tabs = [['junk', '♻ 티켓 만들기'], ['trade', '🔁 교환'], ['gacha', '🎰 뽑기'], ['sig', '🐸 전용 도구'], ['up', '🔨 강화']].map(([k, n]) => `<button class="btn sm${view === k ? '' : ' ghost'}" data-act="ex-view" data-arg="${k}">${n}</button>`).join(' ');
+    const pct = w => `${+(w / 10).toFixed(1)}%`;
+    const mine = new Set(Object.keys(save.roster).map(Number));
+    const body = view === 'junk' ? `<h3>♻ 티켓 만들기</h3><p>창고의 쓰지 않는 도구 <b>${JUNK_PER_TICKET}개</b>를 티켓 1장으로 바꿔 드려요. 종류는 상관없고, 값싼 도구부터 써요.</p>
+        <div class="btns"><button class="btn" data-act="ex-junk" data-arg="1" ${jc >= JUNK_PER_TICKET ? '' : 'disabled'}>티켓 1장 만들기</button> <button class="btn" data-act="ex-junk" data-arg="all" ${jc >= JUNK_PER_TICKET ? '' : 'disabled'}>모두 바꾸기 (${Math.floor(jc / JUNK_PER_TICKET)}장)</button></div>
+        <h3>💰 돈으로 사기</h3><p class="dim">도구가 모자라면 티켓을 한 장에 ₽${TICKET_PRICE}에 살 수도 있어요. (가진 돈 ₽${save.money})</p>
+        <div class="btns">${[1, 10].map(n => `<button class="btn" data-act="ex-buy" data-arg="${n}" ${save.money >= n * TICKET_PRICE ? '' : 'disabled'}>🎟 ${n}장 사기 (₽${n * TICKET_PRICE})</button>`).join(' ')}</div>
+        <h3>♻ 창고의 도구</h3>
+        <p class="dim">🔒을 누르면 그 도구는 교환에 쓰지 않아요. (기술머신·지닌 물건·메가스톤·영양제·구미·이상한사탕·특성캡슐 등 귀한 물건과 쇠가시처럼 겹치는 물건은 처음부터 쓰지 않아요)</p>
+        <div class="store-list">${junkIds().map(id => `<div class="row${junkKept(id) ? ' dim' : ''}">${itemLabel(id)} ×${save.storage[id]}<span class="grow"></span><button class="btn sm${junkKept(id) ? '' : ' ghost'}" data-act="ex-keep" data-arg="${id}">${junkKept(id) ? '🔒 안 씀' : '쓰기'}</button></div>`).join('') || '<p class="dim">창고에 바꿀 수 있는 도구가 없어요.</p>'}</div>`
+      : view === 'trade' ? `<h3>🔁 티켓으로 교환</h3><div class="store-list">${TICKET_TRADES.filter(([id]) => ITEMS[id]).map(([id, c]) => `<div class="row"><div class="grow">${itemLabel(id)}<div class="dim tiny">${esc(ITEMS[id].d)}</div></div><button class="btn sm" data-act="ex-trade" data-arg="${id}" ${tk >= c ? '' : 'disabled'}>🎟 ${c}장</button></div>`).join('')}</div>`
+      : view === 'up' ? `<div class="row">${portraitImg(SIG_HOST, 'portrait sm', 'Happy')}<span class="grow"><b>전용 도구 강화</b> <span class="dim">— 크크크… 재료만 가져오면 전용 도구를 단단하게 손봐 주지. 한 번 강화하면 같은 도구는 모두 강해져. (최대 +${SIG_UP_MAX})</span></span></div>
+        <input class="sig-q" placeholder="포켓몬·도구 이름으로 찾기" autocomplete="off" style="width:100%;margin:6px 0" oninput="const v=this.value.trim().toLowerCase();this.nextElementSibling.querySelectorAll('[data-s]').forEach(r=>r.hidden=!!v&&!r.dataset.s.includes(v))">
+        <div class="store-list">${sigOwned().map(id => { const lv = sigLv(id), to = lv + 1, c = to <= SIG_UP_MAX ? sigUpCost(id, to) : null, ok = c && sigUpOk(c);
+          return `<div class="row" data-s="${esc((ITEMS[id].n + ' ' + (ITEMS[id].who || '')).toLowerCase())}"><div class="grow">${itemLabel(id)}${lv ? ` <b class="sig-lv">+${lv}</b>` : ''}<div class="dim tiny">지금: ${esc(sigUpText(id, lv))}${c ? `<br>+${to}: ${esc(sigUpText(id, to))}<br>재료: 🎟 ${c.tickets}장 · ${ITEMS[c.item].icon}${esc(ITEMS[c.item].n)} ×${c.n} <span class="${haveCount(c.item) >= c.n ? '' : 'warn'}">(가진 것 ${haveCount(c.item)})</span> · ₽${c.money}` : '<br>최대로 강화했어요.'}</div></div>
+            ${c ? `<button class="btn sm" data-act="ex-up" data-arg="${id}" ${ok ? '' : 'disabled'}>🔨 +${to}</button>` : ''}</div>`; }).join('') || '<p class="dim">강화할 전용 도구가 없어요. 🐸 전용 도구에서 먼저 바꿔 오세요. (창고·가방에 있거나 누군가 지니고 있는 도구만 보여요)</p>'}</div>`
+      : view === 'gacha' ? `<h3>🎰 뽑기</h3><p>티켓 1장으로 한 번 뽑아요. 무엇이 나올지는 운이에요!</p>
+        <div class="row">💠 <span class="grow">메가스톤이 나오면 받을 것: ${ITEMS[save.gachaMega] ? `${itemLabel(save.gachaMega)}` : '<span class="dim">아직 안 골랐어요 (나오면 그때 골라요)</span>'}</span><button class="btn sm" data-act="ex-mega">${ITEMS[save.gachaMega] ? '바꾸기' : '고르기'}</button></div>
+        ${save.megaPending > 0 ? `<div class="row warn">💠 <span class="grow">아직 고르지 않은 메가스톤이 <b>${save.megaPending}</b>개 있어요</span><button class="btn sm" data-act="ex-mega-pending">고르기</button></div>` : ''}
+        <div class="btns"><button class="btn" data-act="ex-gacha" data-arg="1" ${tk >= 1 ? '' : 'disabled'}>🎰 1번 뽑기</button> <button class="btn" data-act="ex-gacha" data-arg="10" ${tk >= 10 ? '' : 'disabled'}>🎰 10번 뽑기 <span class="dim">(+1 보너스)</span></button></div>
+        <h3>나오는 물건과 확률</h3><table class="help">${GACHA_TABLE.map(([w, l]) => `<tr><td>${pct(w)}</td><td>${l[0] === '@tm' ? '💿 아무 기술머신 하나' : l[0] === '@mega' ? `💠 메가스톤 (${ITEMS[save.gachaMega] ? `${Gfx.iconHtml(save.gachaMega)} ${esc(ITEMS[save.gachaMega].n)}` : '나오면 원하는 것을 고른다'})` : l.filter(x => ITEMS[x]).map(x => `${ITEMS[x].icon}${esc(ITEMS[x].n)}`).join(' · ')}${l.length > 1 ? ' <span class="dim">(중 하나)</span>' : ''}</td></tr>`).join('')}</table>`
+      : `<div class="row">${portraitImg(SIG_HOST, 'portrait sm', 'Happy')}<span class="grow"><b>삐딱구리 트레이드</b> <span class="dim">— 크크크… 티켓을 모아 오면 특별한 전용 도구와 바꿔 주지. 🤝 표시는 영입한 포켓몬이 쓸 수 있는 도구야.</span></span></div>
+        <input class="sig-q" placeholder="포켓몬·도구 이름으로 찾기" autocomplete="off" style="width:100%;margin:6px 0" oninput="const v=this.value.trim().toLowerCase();this.nextElementSibling.querySelectorAll('[data-s]').forEach(r=>r.hidden=!!v&&!r.dataset.s.includes(v))">
+        <div class="store-list">${SIG_TRADE_ITEMS.filter(id => ITEMS[id]).sort((a, b) => ITEMS[a].hold.only.some(s => mine.has(s)) ? -1 : ITEMS[b].hold.only.some(s => mine.has(s)) ? 1 : 0).map(id => { const ok = ITEMS[id].hold.only.some(s => mine.has(s)); return `<div class="row" data-s="${esc((ITEMS[id].n + ' ' + (ITEMS[id].who || '')).toLowerCase())}"><div class="grow">${itemLabel(id)}${ok ? ' 🤝' : ''}<div class="dim tiny">${esc(ITEMS[id].d)}${ownedCount(id) ? ` · 가지고 있음 ${ownedCount(id)}` : ''}</div></div><button class="btn sm" data-act="ex-sig" data-arg="${id}" ${tk >= SIG_TICKETS ? '' : 'disabled'}>🎟 ${SIG_TICKETS}장</button></div>`; }).join('')}</div>`;
+    return `<div class="row exch-row"><span class="grow">🎟 가진 티켓 <b>${tk}</b>장 · 바꿀 수 있는 도구 <b>${jc}</b>개 <span class="dim">(창고 기준)</span></span></div>
+      <div class="btns">${tabs}</div>${body}`;
+  }
+  // 전용 도구 강화: 가진 도구 (창고·가방·지닌 물건), 재료 개수 (창고 + 가방), 재료 쓰기 (창고 먼저)
+  const sigOwned = () => SIG_TRADE_ITEMS.filter(id => ITEMS[id] && (ownedCount(id) || Object.values(save.roster).some(c => c.held === id)));
+  const haveCount = id => (save.storage[id] || 0) + save.bag.filter(b => b.id === id).length;
+  const sigUpOk = c => (save.tickets || 0) >= c.tickets && save.money >= c.money && haveCount(c.item) >= c.n;
+  function takeItems(id, n) {
+    const s = Math.min(n, save.storage[id] || 0);
+    if (s) { save.storage[id] -= s; if (save.storage[id] <= 0) delete save.storage[id]; n -= s; }
+    while (n > 0) { const i = save.bag.findIndex(b => b.id === id); if (i < 0) break; save.bag.splice(i, 1); n--; }
+  }
+  function gachaPull(n) {
+    n = Math.min(n, save.tickets || 0); if (!n) return;
+    save.tickets -= n;
+    const bonus = GACHA_BONUS[n] || 0;   // 10번 뽑기 보너스
+    const got = Array.from({ length: n + bonus }, gachaRoll);
+    got.forEach(g => { if (g.id === '@mega') save.megaPending = (save.megaPending || 0) + 1; else storeKeep(g.id); });
+    const rare = got.some(g => g.rare);
+    if (rare) Sound.fanfare('bigreward', 'achieve'); else Sound.play('achieve');
+    UI.open({ title: rare ? '🎉 대박!' : '🎰 뽑기 결과', html: `<div class="gacha-res">${got.map((g, i) => `<div class="row${g.rare ? ' gacha-rare' : ''}">${g.rare ? '🌟 ' : ''}${g.id === '@mega' ? '💠 <b>메가스톤</b> <span class="dim">(닫으면 고르기)</span>' : itemLabel(g.id)}${i >= n ? ' <span class="tag">🎁 보너스</span>' : ''}</div>`).join('')}</div><p class="dim">받은 물건은 창고로 보냈어요.</p>`,
+      choices: [{ label: '닫기', fn: () => { if (got.some(g => g.id === '@mega')) setTimeout(megaPendingPick, 0); } }], cancel: () => { if (got.some(g => g.id === '@mega')) setTimeout(megaPendingPick, 0); } });
+  }
   function tabShop() {
     const row = (id, daily) => {
       const left = daily ? shopLeft(id) : Infinity;
-      return `<div class="row">${itemLabel(id)}<span class="grow dim">${esc(ITEMS[id].d)}${daily && !left ? ' <span class="warn">(매진)</span>' : ''}</span>
+      // 기술머신은 긴 설명 대신 한 줄 요약 (v0.100: 좁은 칸에서 세로로 길어지던 문제). 전체 설명은 ℹ·마우스를 올리면
+      const it = ITEMS[id], m = it.tm && DATA.moves[it.mv];
+      const desc = m ? `${typeName(m.t)} · ${['', '변화', '물리', '특수'][m.c]}${m.p ? ` · 위력 ${m.p}` : ''}${m.a ? ` · 명중 ${m.a}` : ''} · ${rangeShort(it.mv)}` : it.d;
+      const sold = daily && !left ? ' <span class="warn">(매진)</span>' : '';
+      const head = m ? `<div class="grow">${itemLabel(id)}${sold}<div class="dim tiny" title="${esc(m.d || it.d)}">${esc(desc)} <button class="btn sm ghost" data-dexmove="${it.mv}" title="기술 정보">ℹ</button></div></div>`
+        : `${itemLabel(id)}<span class="grow dim">${esc(desc)}${sold}</span>`;
+      return `<div class="row">${head}
         <button class="btn sm" data-act="buy" data-arg="${id}" ${save.money < ITEMS[id].price || !left ? 'disabled' : ''}>₽${ITEMS[id].price}${ITEMS[id].stack ? ' (5개)' : ''}</button></div>`;
     };
     return `<h3>켈리몬 상점 <span class="dim">· 항상 판매</span></h3><div class="grid2">${shopFixedFor(save).map(id => row(id)).join('')}</div>
@@ -1381,7 +1523,7 @@ const Game = (() => {
     return `${upgradeBox()}<div class="btns store-dlgs"><button class="btn" data-act="dlg-tms">💿 기술머신 보관함 (${tmN}개)</button> <button class="btn" data-act="dlg-autosell">🔁 자동 판매 (${asN}개)</button></div>
       <div class="split"><div><h3>창고 (${storageUsed()}/${save.storageMax})</h3>${storageUsed() > save.storageMax ? '<p class="warn">창고가 넘쳤습니다. 정리하기 전까지는 맡길 수 없습니다.</p>' : ''}
       ${all.length > 1 ? `<div class="row sort-row">↕ ${sorts} ${filter}</div>` : ''}
-      <div class="store-list">${ids.length ? ids.map(id => `<div class="row">${itemLabel(id)} ×${save.storage[id]}<span class="grow"></span>
+      <div class="store-list">${ids.length ? ids.map(id => `<div class="row"><span class="grow store-name">${itemLabel(id)} ×${save.storage[id]}</span>
         <button class="btn sm ghost" data-dexitem="${id}" title="아이템 정보">ℹ</button>${id === 'candy' ? ' <button class="btn sm" data-act="use-candy">사용</button>' : ''}
         <button class="btn sm" data-act="withdraw" data-arg="${id}" ${bagSlots() >= bagMax() && !ITEMS[id].stack ? 'disabled' : ''}>꺼내기</button>
         ${id !== 'quest' ? `<button class="btn sm ghost" data-act="sell-store" data-arg="${id}" title="${ITEMS[id].stack ? '5개씩' : '하나'} 판다 (상점 탭에서 되살 수 있음)">₽${sellValue({ id, n: ITEMS[id].stack ? Math.min(5, save.storage[id]) : 1 })} 팔기</button>` : ''}</div>`).join('') : `<p class="dim">${all.length ? '이 종류의 아이템이 없습니다.' : '창고가 비어 있습니다.'}</p>`}</div>
@@ -1468,7 +1610,7 @@ const Game = (() => {
       return `<p class="dim">기술머신은 창고 칸을 차지하지 않아요. 가방 ${bagSlots()}/${bagMax()}칸</p>
         <input data-tmq="1" placeholder="기술 이름 검색" value="${esc(q)}" autocomplete="off" style="width:100%;margin-bottom:6px">
         ${shown.map(id => `<div class="row">${itemLabel(id)} ×${save.storage[id]}<span class="grow"></span>
-          <button class="btn sm ghost" data-dexitem="${id}" title="아이템 정보">ℹ</button>
+          <button class="btn sm ghost" data-dexmove="${ITEMS[id].mv}" title="기술 정보와 배우는 포켓몬">ℹ</button>
           <button class="btn sm" data-tmw="${id}" ${bagSlots() >= bagMax() ? 'disabled' : ''}>꺼내기</button>
           <button class="btn sm ghost" data-tms="${id}" title="하나 판다 (상점 탭에서 되살 수 있음)">₽${sellValue({ id, n: 1 })} 팔기</button></div>`).join('') || `<p class="dim">${tms.length ? '찾는 기술머신이 없습니다.' : '보관한 기술머신이 없습니다.'}</p>`}`;
     };
@@ -1617,8 +1759,8 @@ const Game = (() => {
     const w = sp, wc = ch;
     return `<h3>캐릭터 관리</h3>
       ${tmWhoBar()}
-      <h3>🏅 ${esc(spName(sp))}의 메달</h3>${medalSection(sp)}
-      <div class="btns"><button class="btn" data-act="change-char">🔄 리더 변경</button> <button class="btn" data-act="set-moves" data-arg="${sp}">📘 ${esc(spName(sp))} 기술 설정</button></div>
+      <h3>🏅 ${esc(monName(sp))}의 메달</h3>${medalSection(sp)}
+      <div class="btns"><button class="btn" data-act="change-char">🔄 리더 변경</button> <button class="btn ghost" data-act="nick" data-arg="${sp}">✏ 이름 바꾸기</button> <button class="btn" data-act="set-moves" data-arg="${sp}">📘 ${esc(monName(sp))} 기술 설정</button></div>
       <p class="dim">영입한 포켓몬 ${roster.length}마리 · 지금 영입 확률 <b>${(recruitRateFor(save.roster[save.current].lv, rankState().pts) * (HELD_ITEMS[save.roster[save.current].held]?.hold?.recruitMul || 1) * 100).toFixed(1)}%</b> <span class="tiny">(리더 레벨 기준${rankLv() ? `, 탐험대 등급 +${rankLv()}%p` : ''}${HELD_ITEMS[save.roster[save.current].held]?.hold?.recruitMul ? ', 친구리본 포함' : ''}, 전설·환상은 절반)</span></p>
       ${DATA.species[sp].sh ? `<h3>모습</h3><div class="row">${portraitImg(sp, 'portrait sm', 'Normal', false)} ${portraitImg(sp, 'portrait sm', 'Normal', true)}
         <span class="grow">${ch.shiny ? '✨ 이로치(색이 다른 모습)로 탐험합니다.' : '보통 모습으로 탐험합니다.'} <span class="dim">(겉모습만 바뀝니다)</span></span>
@@ -1642,10 +1784,10 @@ const Game = (() => {
       <h3>구미 <span class="dim">(아주 드문 간식. 능력치가 영구히 조금 오르고, 던전에서 먹으면 배도 찹니다)</span></h3>
       ${gummySection(wc, w)}
       <h3>${ITEMS.candy.icon} 이상한사탕 <span class="dim">(레벨이 1 오릅니다)</span></h3>
-      <div class="row"><span class="grow">${esc(spName(w))} <b>Lv${wc.lv}</b> · 이상한사탕 ×${ownedCount('candy')}</span>
+      <div class="row"><span class="grow">${esc(monName(w))} <b>Lv${wc.lv}</b> · 이상한사탕 ×${ownedCount('candy')}</span>
         <button class="btn sm" data-act="use-candy" data-arg="${w}" ${ownedCount('candy') && wc.lv < MAX_LEVEL ? '' : 'disabled'}>먹이기</button></div>
       <h3>지닌 물건</h3>
-      <div class="row">${wc.held ? `${ITEMS[wc.held].icon} <b>${esc(ITEMS[wc.held].n)}</b><span class="grow dim">${esc(ITEMS[wc.held].d)}</span>
+      <div class="row">${wc.held ? `${ITEMS[wc.held].icon} <b>${esc(ITEMS[wc.held].n)}${sigLv(wc.held) ? ' +' + sigLv(wc.held) : ''}</b><span class="grow dim">${esc(ITEMS[wc.held].d)}</span>
         <button class="btn sm ghost" data-act="unhold" data-arg="${w}">빼기</button>` : '<span class="grow dim">지닌 물건이 없습니다. 상점에서 사거나 던전에서 주울 수 있어요.</span>'}
         <button class="btn sm" data-act="hold" data-arg="${w}">${wc.held ? '바꾸기' : '지니게 하기'}</button></div>
       <h3>진화</h3>
@@ -1655,29 +1797,81 @@ const Game = (() => {
       ${partySection()}`;
   }
   // 왼쪽 캐릭터 카드 아래: 동료 정보와 기술·지닌 물건 변경, 작전
+  // ── 팀 프리셋 (v0.100): 리더 + 동료 구성을 TEAM_SLOTS개까지 저장 (애정몬 팀·하드 돌파 팀·이로치 팀 등). 지닌 물건·기술은 포켓몬마다 그대로 따라온다 ──
+  const TEAM_SLOTS = 8;
+  const teams = () => {
+    save.teams = save.teams || [];
+    while (save.teams.length < TEAM_SLOTS) save.teams.push({ name: `팀 ${save.teams.length + 1}`, lead: null, party: [] });
+    return save.teams;
+  };
+  function nickDialog(sp) {
+    const ch = save.roster[sp]; if (!ch) return;
+    let inp = null, did = false;
+    const done = () => { if (did) return; did = true; const v = (inp ? inp.value : '').replace(/[<>&"']/g, '').trim().slice(0, NICK_MAX); if (v && v !== spName(sp)) ch.nick = v; else delete ch.nick; persist(); renderTown(); UI.toast(v && v !== spName(sp) ? `이제 ${josa(v, '이라고', '라고')} 불러요.` : `${spName(sp)}의 별명을 지웠어요.`); };
+    UI.open({ title: `✏ ${esc(spName(sp))}의 이름`, html: `<p class="dim">${NICK_MAX}자까지. 비우면 원래 이름으로 돌아가요. 진화해도 별명은 그대로예요.</p><input id="nick-in" maxlength="${NICK_MAX}" value="${esc(ch.nick || '')}" placeholder="${esc(spName(sp))}" autocomplete="off" style="width:100%">`,
+      choices: [{ label: '바꾸기', fn: done }, { label: '그만둔다', fn: () => { did = true; } }],
+      onOpen: (box, m) => { inp = box.querySelector('#nick-in'); inp.onkeydown = e => { if (e.key === 'Enter') { e.stopPropagation(); UI.close(m); done(); } }; setTimeout(() => { inp.focus(); inp.select(); }, 50); } });
+  }
+  function teamDialog() {
+    const face = (id, lead) => save.roster[id] ? `<span class="team-mon${lead ? ' lead' : ''}" title="${esc(monName(id))}${lead ? ' (리더)' : ''}">${portraitImg(id, 'portrait xs', 'Normal', save.roster[id].shiny)}${lead ? '<i>★</i>' : ''}</span>` : '';
+    const cur = [save.current, ...partyList()];
+    UI.open({
+      title: '📋 팀 프리셋', wide: true,
+      html: `<p class="dim">지금 리더와 동료를 저장해 두고, 버튼 하나로 다시 불러와요. 지닌 물건과 기술은 포켓몬마다 그대로예요.</p>
+        <div class="row"><span class="grow">지금 팀: ${cur.map((id, i) => face(id, !i)).join('')}</span></div>
+        ${teams().map((tm, i) => { const ok = tm.lead && save.roster[tm.lead], same = ok && tm.lead === save.current && tm.party.join() === partyList().join(); return `<div class="row preset"><div class="grow"><b>${esc(tm.name)}</b> <button class="btn sm ghost" data-team-name="${i}" title="이름 바꾸기">✏</button>
+          <div>${ok ? [tm.lead, ...tm.party].map((id, j) => face(id, !j)).join('') : '<span class="dim tiny">비어 있음</span>'}</div></div>
+          <button class="btn sm" data-team-load="${i}" ${ok && !same ? '' : 'disabled'}>${same ? '사용 중' : '불러오기'}</button>
+          <button class="btn sm ghost" data-team-save="${i}" title="지금 리더와 동료를 이 칸에 저장">저장</button></div>`; }).join('')}`,
+      choices: [{ label: '닫기', fn: () => {} }],
+      onOpen: (box, m) => box.addEventListener('click', e => {
+        const b = e.target.closest('[data-team-load],[data-team-save],[data-team-name]'); if (!b || b.disabled) return;
+        const i = +(b.dataset.teamLoad ?? b.dataset.teamSave ?? b.dataset.teamName), tm = teams()[i];
+        if (b.dataset.teamSave != null) { tm.lead = save.current; tm.party = partyList().slice(); UI.toast(`${tm.name}에 지금 팀을 저장했어요.`); }
+        else if (b.dataset.teamLoad != null) {
+          if (!save.roster[tm.lead]) return;
+          save.current = tm.lead; save.party = tm.party.filter(id => save.roster[id] && id !== tm.lead).slice(0, PARTY_MAX);
+          const lost = tm.party.length - save.party.length;
+          UI.toast(`${tm.name}을(를) 불러왔어요.${lost ? ` (없는 포켓몬 ${lost}마리는 뺐어요)` : ''}`);
+        } else {
+          UI.close(m);
+          let inp = null, did = false;
+          const done = () => { if (did) return; did = true; const v = inp && inp.value.trim(); if (v) tm.name = v.slice(0, 12); persist(); setTimeout(teamDialog, 0); };
+          return UI.open({ title: '팀 이름', html: `<input id="team-name" maxlength="12" value="${esc(tm.name)}" autocomplete="off" style="width:100%">`,
+            choices: [{ label: '바꾸기', fn: done }],
+            onOpen: (bx, m2) => {
+              inp = bx.querySelector('#team-name');
+              inp.onkeydown = ev => { if (ev.key === 'Enter') { ev.stopPropagation(); UI.close(m2); done(); } };
+              setTimeout(() => { inp.focus(); inp.select(); }, 50);
+            }, cancel: () => { if (!did) { did = true; setTimeout(teamDialog, 0); } } });
+        }
+        persist(); renderTown(); UI.close(m); setTimeout(teamDialog, 0);
+      }),
+    });
+  }
   function partyCard() {
     const pl = partyList();
     const one = id => {
       const c = save.roster[id], s = applyBoost(calcStats(id, c.lv, 31), c.boost), mv = c.moves.length ? c.moves : defaultMoves(id, c.lv);
-      return `<details class="cc-mate"><summary>${portraitImg(id, 'portrait xs', 'Normal', c.shiny)} <b>${esc(spName(id))}</b> Lv${c.lv}${c.held ? ` ${ITEMS[c.held].icon}` : ''}</summary>
+      return `<details class="cc-mate"><summary>${portraitImg(id, 'portrait xs', 'Normal', c.shiny)} <b>${esc(monName(id))}</b> Lv${c.lv}${c.held ? ` ${ITEMS[c.held].icon}` : ''}</summary>
         <div class="dim">${typeBadges(DATA.species[id].t)} HP ${s.maxhp} · 특성 <span class="ab-link" data-ability="${entryAbility(id, c)}">${esc(abilityName(entryAbility(id, c)))}</span></div>
         <table class="stats">
           <tr><td>HP</td><td>${s.maxhp}</td><td>공격</td><td>${s.atk}</td></tr>
           <tr><td>방어</td><td>${s.def}</td><td>특공</td><td>${s.spa}</td></tr>
           <tr><td>특방</td><td>${s.spd}</td><td>스피드</td><td>${s.spe}</td></tr></table>
-        <div class="cc-ability">지닌 물건 ${c.held ? `${ITEMS[c.held].icon} <b>${esc(ITEMS[c.held].n)}</b>` : '<span class="dim">없음</span>'}</div>
+        <div class="cc-ability">지닌 물건 ${c.held ? `${ITEMS[c.held].icon} <b>${esc(ITEMS[c.held].n)}${sigLv(c.held) ? ' +' + sigLv(c.held) : ''}</b>` : '<span class="dim">없음</span>'}</div>
         <div class="cc-moves">${mv.map(m => `<div class="move-row clickable" data-move="${m}" data-sp="${id}">${moveLine(m)}${masteryStar(id, m)}</div>`).join('')}</div>
         ${evoOptions(id).filter(e => e.ok).map(e => `<div class="row">${portraitImg(e.to, 'portrait xs', 'Normal', c.shiny)} <span class="grow">✨ <b>${esc(spName(e.to))}</b>(으)로 진화할 수 있어요${e.itemId ? ` <span class="dim">(${esc(ITEMS[e.itemId].n)} 사용)</span>` : ''}</span><button class="btn sm" data-act="evolve-mate" data-arg="${id}:${e.to}">진화</button></div>`).join('')}
-        <div class="btns"><button class="btn sm" data-act="set-moves" data-arg="${id}">📘 기술</button> <button class="btn sm" data-act="hold" data-arg="${id}">지닌 물건</button>${c.held ? ` <button class="btn sm ghost" data-act="unhold" data-arg="${id}">빼기</button>` : ''} <button class="btn sm ghost danger" data-act="party-remove" data-arg="${id}">동료에서 빼기</button></div></details>`;
+        <div class="btns"><button class="btn sm" data-act="set-moves" data-arg="${id}">📘 기술</button> <button class="btn sm ghost" data-act="nick" data-arg="${id}">✏ 이름</button> <button class="btn sm" data-act="hold" data-arg="${id}">지닌 물건</button>${c.held ? ` <button class="btn sm ghost" data-act="unhold" data-arg="${id}">빼기</button>` : ''} <button class="btn sm ghost danger" data-act="party-remove" data-arg="${id}">동료에서 빼기</button></div></details>`;
     };
-    return `<div class="cc-party"><div class="cc-party-head">🤝 동료 ${pl.length}/${PARTY_MAX}${pl.length < PARTY_MAX ? ' <button class="btn sm ghost" data-act="party-add">＋ 추가</button>' : ''}</div>
+    return `<div class="cc-party"><div class="cc-party-head">🤝 동료 ${pl.length}/${PARTY_MAX}${pl.length < PARTY_MAX ? ' <button class="btn sm ghost" data-act="party-add">＋ 추가</button>' : ''} <button class="btn sm ghost" data-act="teams" title="리더와 동료 구성을 저장하고 불러와요">📋 팀 프리셋</button></div>
       ${pl.length ? `<div class="dim tiny">작전은 던전에서 🤝 동료 버튼(V)으로 바꿔요. 탐험마다 '나를 따라와'로 시작해요.</div>${pl.map(one).join('')}` : `<div class="dim">동료 없이 혼자 탐험합니다. <span title="혼자 탐험 보정">(받는 데미지 ${SOLO_DMG_MUL}배, 능력치 ${SOLO_STAT_MUL}배)</span></div>`}</div>`;
   }
   function partySection() {
     const pl = partyList(), cand = Object.keys(save.roster).map(Number).filter(id => id !== save.current && !pl.includes(id));
     return `<h3>🤝 동료 <span class="dim">(${pl.length}/${PARTY_MAX} · 일반·테마 던전에 함께 간다. 로그라이크와 오늘의 도전은 혼자)</span></h3>
       <p class="dim">동료는 스스로 싸우고 리더를 따라온다. 경험치도 함께 받는다. 쓰러지면 그 탐험에서만 빠지고, 리더가 쓰러지면 탐험이 끝난다. 동료가 있으면 혼자 탐험 보정(받는 데미지 ${SOLO_DMG_MUL}배, 능력치 ${SOLO_STAT_MUL}배)은 없다. 동료가 모두 쓰러져도 생기지 않는다.</p>
-      <div class="roster">${pl.map(id => `<button class="rcard on" data-act="party-remove" data-arg="${id}" title="눌러서 빼기">${portraitImg(id, 'portrait sm', 'Normal', save.roster[id].shiny)}<span>${esc(spName(id))}</span><span class="dim">Lv${save.roster[id].lv} · 빼기</span>${heldOfRoster(id) ? `<b class="pk-held" title="지닌 물건: ${esc(ITEMS[heldOfRoster(id)].n)}">${Gfx.iconHtml(heldOfRoster(id))}</b>` : ''}</button>`).join('')}
+      <div class="roster">${pl.map(id => `<button class="rcard on" data-act="party-remove" data-arg="${id}" title="눌러서 빼기">${portraitImg(id, 'portrait sm', 'Normal', save.roster[id].shiny)}<span>${esc(monName(id))}</span><span class="dim">Lv${save.roster[id].lv} · 빼기</span>${heldOfRoster(id) ? `<b class="pk-held" title="지닌 물건: ${esc(ITEMS[heldOfRoster(id)].n)}">${Gfx.iconHtml(heldOfRoster(id))}</b>` : ''}</button>`).join('')}
         ${pl.length < PARTY_MAX && cand.length ? '<button class="rcard" data-act="party-add"><span style="font-size:22px">＋</span><span>동료 추가</span></button>' : ''}</div>
       ${!cand.length && !pl.length ? '<p class="dim">던전에서 영입한 포켓몬이 있어야 동료로 데려갈 수 있어요.</p>' : ''}`;
   }
@@ -1725,7 +1919,7 @@ const Game = (() => {
     takeItem(id);
     up.forEach(k => { ch.boost['g_' + k] = (ch.boost['g_' + k] || 0) + 1; });
     Sound.play('levelup');
-    UI.toast(`${jo(spName(sp), '은')} ${jo(g.n, '을')} 먹었다! ${up.map(k => `${STAT_KO[k]} +${gummyAmt(k)}`).join(', ')}`);
+    UI.toast(`${jo(monName(sp), '은')} ${jo(g.n, '을')} 먹었다! ${up.map(k => `${STAT_KO[k]} +${gummyAmt(k)}`).join(', ')}`);
   }
   function useVitamin(id, sp = save.current) {
     const [n, k, sn, v] = VITAMINS[id], ch = save.roster[sp];
@@ -1735,7 +1929,7 @@ const Game = (() => {
     if (bi >= 0) save.bag.splice(bi, 1); else { save.storage[id]--; if (save.storage[id] <= 0) delete save.storage[id]; }
     ch.boost[k] = (ch.boost[k] || 0) + 1;
     Sound.play('levelup');
-    UI.toast(`${jo(spName(sp), '은')} ${jo(n, '을')} 먹었다! ${jo(sn, '이')} ${v} 올랐다!`);
+    UI.toast(`${jo(monName(sp), '은')} ${jo(n, '을')} 먹었다! ${jo(sn, '이')} ${v} 올랐다!`);
     Progress.check();
   }
 
@@ -1745,14 +1939,14 @@ const Game = (() => {
     if (sp == null) {
       const list = [save.current, ...partyList()];
       if (list.length > 1) {
-        UI.open({ title: '누구에게 먹일까요?', choices: list.map(id => ({ label: `${id === save.current ? '👑 ' : '🤝 '}${esc(spName(id))} <span class="dim">Lv${save.roster[id].lv}</span>`, disabled: save.roster[id].lv >= MAX_LEVEL, fn: () => setTimeout(() => useCandy(id), 0) })) });
+        UI.open({ title: '누구에게 먹일까요?', choices: list.map(id => ({ label: `${id === save.current ? '👑 ' : '🤝 '}${esc(monName(id))} <span class="dim">Lv${save.roster[id].lv}</span>`, disabled: save.roster[id].lv >= MAX_LEVEL, fn: () => setTimeout(() => useCandy(id), 0) })) });
         return;
       }
       sp = save.current;
     }
     const ch = save.roster[sp];
     if (ch.lv >= MAX_LEVEL) { UI.toast('이미 최고 레벨입니다.'); return; }
-    if (!(await UI.confirm('이상한사탕', `<p>${esc(spName(sp))}에게 이상한사탕을 먹입니다. (Lv${ch.lv} → Lv${ch.lv + 1})</p>`, '먹인다', '그만둔다'))) return;
+    if (!(await UI.confirm('이상한사탕', `<p>${esc(monName(sp))}에게 이상한사탕을 먹입니다. (Lv${ch.lv} → Lv${ch.lv + 1})</p>`, '먹인다', '그만둔다'))) return;
     takeItem('candy');
     ch.lv++; ch.exp = Math.pow(ch.lv, 3);   // 그 레벨의 시작 경험치 (expFor는 최고 레벨에서 Infinity)
     const learned = learnedAtAll(sp, ch.lv).filter(mid => !ch.moves.includes(mid));
@@ -1760,7 +1954,7 @@ const Game = (() => {
     Progress.max('maxLv', ch.lv); Progress.check();
     Sound.play('levelup'); persist(); renderTown();
     const rest = learned.filter(mid => !added.includes(mid));
-    UI.alert('레벨 업!', `<div class="center">${portraitImg(sp, 'portrait big', 'Joyous', ch.shiny)}</div><p class="center">${esc(spName(sp))}의 레벨이 올랐다! <b>Lv${ch.lv}</b></p>
+    UI.alert('레벨 업!', `<div class="center">${portraitImg(sp, 'portrait big', 'Joyous', ch.shiny)}</div><p class="center">${esc(monName(sp))}의 레벨이 올랐다! <b>Lv${ch.lv}</b></p>
       ${added.length ? `<p class="center">새 기술: ${added.map(mid => esc(DATA.moves[mid].n)).join(', ')}</p>` : ''}
       ${rest.length ? `<p class="center dim">새로 배울 수 있는 기술: ${rest.map(mid => esc(DATA.moves[mid].n)).join(', ')} (기술 설정에서 고르세요)</p>` : ''}
       ${evoOptions(sp).some(e => e.ok) ? '<p class="center">✨ 진화할 수 있어요! 캐릭터 탭에서 진화하세요.</p>' : ''}`);
@@ -1776,7 +1970,7 @@ const Game = (() => {
     const slot = DATA.species[sp].ab.find(a => a[0] === aid); if (!slot) return;
     const need = slot[1] ? 'abpatch' : 'abcapsule', it = ITEMS[need];
     if (!ownedCount(need)) { UI.alert('특성 바꾸기', `<p>${it.icon} <b>${esc(jo(it.n, '이'))}</b> 필요합니다.</p><p class="dim">마을 상점에 가끔 진열되고, 던전에서 드물게 주울 수 있어요.</p>`); return; }
-    const ok = await UI.confirm('특성 바꾸기', `<p>${esc(spName(sp))}의 특성을 <b>${esc(abilityName(entryAbility(sp, ch)))}</b> → <b>${esc(jo(abilityName(aid), '으로'))}</b> 바꿉니다.${slot[1] ? ' <span class="dim">(숨겨진 특성)</span>' : ''}</p>
+    const ok = await UI.confirm('특성 바꾸기', `<p>${esc(monName(sp))}의 특성을 <b>${esc(abilityName(entryAbility(sp, ch)))}</b> → <b>${esc(jo(abilityName(aid), '으로'))}</b> 바꿉니다.${slot[1] ? ' <span class="dim">(숨겨진 특성)</span>' : ''}</p>
       <p>${it.icon} ${esc(it.n)} 1개를 사용합니다. <span class="dim">(가진 개수 ${ownedCount(need)})</span></p>`, '바꾼다', '그만둔다');
     if (!ok) return;
     takeItem(need);
@@ -1849,6 +2043,7 @@ const Game = (() => {
       <div class="row"><span class="grow">미궁 탐험대 <b>v${GAME_VERSION}</b> <span class="dim">(${GAME_DATE})</span>${ENV === 'dev' ? ' <span class="tag">개발 환경</span>' : ''}${updateVer ? ` <a href="#" data-act="update">🔔 새 버전 v${esc(updateVer)}</a>` : ''}
         <div class="dim">친구와 구조 코드나 오늘의 도전 기록을 주고받을 때는 서로 같은 버전인지 확인하세요.</div></span>
         <button class="btn sm ghost" data-act="version-notes">변경 내역</button>${save.endingSeen || save.cleared?.[ENDING_DUNGEON] ? ' <button class="btn sm ghost" data-act="ending">🎬 엔딩 다시 보기</button>' : ''}${Online.enabled() ? ' <button class="btn sm ghost" data-act="ending-stats">🌍 엔딩 통계</button>' : ''}</div>
+      <h3>📲 앱으로 설치</h3>${installHtml()}
       <h3>⚙ 설정</h3><div class="row"><span class="grow">화면 · 소리 · 조작 · 플레이</span><button class="btn sm" data-act="settings">설정 열기</button></div>
       <h3>📖 게임 가이드</h3><div class="row"><span class="grow">타입 상성 · 전투 규칙 · 상태이상 · 날씨 · 조작법 등</span><button class="btn sm" data-act="guide-menu">가이드 보기</button></div>
       ${Story.replayHtml()}
@@ -1948,6 +2143,29 @@ const Game = (() => {
       case 'preset-load': presetLoad(+arg); break;
       case 'preset-name': return presetName(+arg);
       case 'auto-sell': return toggleAutoSell(arg);
+      case 'teams': return teamDialog();
+      case 'install': return installApp();
+      case 'nick': return nickDialog(+arg || save.current);
+      case 'ex-view': exView = arg; break;
+      case 'ex-keep': save.junkKeep = junkKept(arg) ? save.junkKeep.filter(x => x !== arg) : [...(save.junkKeep || []), arg]; break;
+      case 'ex-junk': { const n = arg === 'all' ? Math.floor(junkCount() / JUNK_PER_TICKET) : 1; if (n && junkToTickets(n)) { Sound.play('achieve'); UI.toast(`🎟 티켓 ${n}장을 받았어요!`); } break; }
+      case 'ex-trade': case 'ex-sig': {
+        const c = act === 'ex-sig' ? (SIG_TRADE_ITEMS.includes(arg) ? SIG_TICKETS : 0) : (TICKET_TRADES.find(x => x[0] === arg) || [])[1];
+        if (!c || !ITEMS[arg] || (save.tickets || 0) < c) return;
+        save.tickets -= c; storeKeep(arg); Sound.play('achieve'); UI.toast(`${ITEMS[arg].icon} ${jo(ITEMS[arg].n, '과')} 바꿨어요! (창고로)`); break;
+      }
+      case 'ex-gacha': gachaPull(+arg); break;
+      case 'ex-mega': return megaPicker('💠 뽑기에서 받을 메가스톤', '뽑기에서 메가스톤(1%)이 나오면 여기서 고른 메가스톤을 받아요. 언제든 바꿀 수 있어요.', id => { save.gachaMega = id; persist(); renderTown(); UI.toast(`${ITEMS[id].icon} ${jo(ITEMS[id].n, '으로')} 정했어요.`); });
+      case 'ex-mega-pending': return megaPendingPick();
+      case 'ex-up': {
+        const lv = sigLv(arg), to = lv + 1;
+        if (!sigUpgradable(arg) || to > SIG_UP_MAX) return;
+        const c = sigUpCost(arg, to); if (!sigUpOk(c)) return;
+        save.tickets -= c.tickets; save.money -= c.money; takeItems(c.item, c.n);
+        save.sigLv = { ...(save.sigLv || {}), [arg]: to };
+        Sound.fanfare('reward', 'achieve'); UI.toast(`🔨 ${ITEMS[arg].n}이(가) +${to}로 강화됐어요!`); break;
+      }
+      case 'ex-buy': { const n = Math.max(1, +arg || 1); if (save.money < n * TICKET_PRICE) return; save.money -= n * TICKET_PRICE; save.tickets = (save.tickets || 0) + n; Sound.play('achieve'); UI.toast(`🎟 티켓 ${n}장을 샀어요.`); break; }
       case 'dlg-tms': return tmStoreDialog();
       case 'dlg-autosell': return autoSellDialog();
       case 'deposit': {
@@ -2097,7 +2315,7 @@ const Game = (() => {
   async function useTM(id) {
     const sp = tmWho(), ch = save.roster[sp], it = ITEMS[id], mv = DATA.moves[it.mv];
     if (!canLearnTM(sp, it.mv)) return;
-    if (!(await UI.confirm('기술머신', `<p>${esc(jo(it.n, '을'))} 사용해서 ${esc(spName(sp))}에게 ${esc(jo(mv.n, '을'))} 가르칩니다.</p><p class="dim">기술머신은 사라집니다.</p>`, '사용한다', '그만둔다'))) return;
+    if (!(await UI.confirm('기술머신', `<p>${esc(jo(it.n, '을'))} 사용해서 ${esc(monName(sp))}에게 ${esc(jo(mv.n, '을'))} 가르칩니다.</p><p class="dim">기술머신은 사라집니다.</p>`, '사용한다', '그만둔다'))) return;
     const bi = save.bag.findIndex(b => b.id === id);
     if (bi >= 0) save.bag.splice(bi, 1); else { save.storage[id]--; if (save.storage[id] <= 0) delete save.storage[id]; }
     ch.tms = [...new Set([...(ch.tms || []), it.mv])];
@@ -2132,19 +2350,19 @@ const Game = (() => {
   async function useMasterBook(mid) {
     const sp = tmWho(), ch = save.roster[sp], it = ITEMS.masterbook, mv = DATA.moves[mid];
     if (!mv || !ownedCount('masterbook') || masteryLevel(sp, mid) >= MASTERY_MAX) return;
-    if (!(await UI.confirm(it.n, `<p>${it.icon} ${esc(jo(it.n, '을'))} 써서 ${esc(spName(sp))}의 <b>${esc(mv.n)}</b> 숙련도를 ★${masteryLevel(sp, mid)} → <b>★${MASTERY_MAX}</b>으로 올립니다.</p>
+    if (!(await UI.confirm(it.n, `<p>${it.icon} ${esc(jo(it.n, '을'))} 써서 ${esc(monName(sp))}의 <b>${esc(mv.n)}</b> 숙련도를 ★${masteryLevel(sp, mid)} → <b>★${MASTERY_MAX}</b>으로 올립니다.</p>
       <p class="dim">PP 최대 +${Math.round(MASTERY_MAX * MASTERY_PP * 100)}%, PP를 안 쓸 확률 ${Math.round(MASTERY_MAX * MASTERY_FREE * 100)}%</p>`, '쓴다', '그만둔다'))) return;
     takeItem('masterbook');
     save.mastery = save.mastery || {};
     const book = save.mastery[sp] = save.mastery[sp] || {};
     book[mid] = Math.max(book[mid] || 0, masteryNeed(mid, MASTERY_MAX));
     Sound.play('levelup'); persist(); renderTown();
-    UI.toast(`${spName(sp)}의 ${mv.n} 숙련도가 ★${MASTERY_MAX}이 되었다!`);
+    UI.toast(`${monName(sp)}의 ${mv.n} 숙련도가 ★${MASTERY_MAX}이 되었다!`);
   }
   async function learnEgg(mid) {
     const sp = tmWho(), ch = save.roster[sp], it = ITEMS.eggtm, mv = DATA.moves[mid];
     if (!eggMovesOf(sp).includes(mid) || (ch.tms || []).includes(mid) || !ownedCount('eggtm')) return;
-    if (!(await UI.confirm('교배기술', `<p>${it.icon} ${esc(jo(it.n, '을'))} 사용해서 ${esc(spName(sp))}에게 ${esc(jo(mv.n, '을'))} 가르칩니다.</p>${moveDetailHtml(mid)}<p class="dim">교배기술머신 1개가 사라집니다. (가진 개수 ${ownedCount('eggtm')})</p>`, '배운다', '그만둔다'))) return;
+    if (!(await UI.confirm('교배기술', `<p>${it.icon} ${esc(jo(it.n, '을'))} 사용해서 ${esc(monName(sp))}에게 ${esc(jo(mv.n, '을'))} 가르칩니다.</p>${moveDetailHtml(mid)}<p class="dim">교배기술머신 1개가 사라집니다. (가진 개수 ${ownedCount('eggtm')})</p>`, '배운다', '그만둔다'))) return;
     takeItem('eggtm');
     ch.tms = [...new Set([...(ch.tms || []), mid])];
     Sound.play('item');
@@ -2165,7 +2383,7 @@ const Game = (() => {
     Object.keys(save.storage).forEach(id => { if (ITEMS[id]?.held && save.storage[id] > 0) opts.push({ id, from: 'storage' }); });
     if (!opts.length) { UI.alert('지닌 물건', '<p>가방이나 창고에 지닐 수 있는 물건이 없습니다.</p><p class="dim">상점에서 매일 지닌 물건 몇 개를 팔고, 던전에서도 가끔 주울 수 있어요.</p>'); return; }
     UI.open({
-      title: `${esc(spName(sp))}에게 지니게 할 물건`, wide: true,
+      title: `${esc(monName(sp))}에게 지니게 할 물건`, wide: true,
       choices: opts.map(o => ({ label: `${ITEMS[o.id].icon} ${esc(ITEMS[o.id].n)} <span class="dim">(${o.from === 'bag' ? '가방' : '창고'})</span>`, sub: esc(heldBlockReason(entryAbility(sp, ch), o.id) || ITEMS[o.id].d), disabled: !!heldBlockReason(entryAbility(sp, ch), o.id), fn: () => {
         if (o.from === 'bag') save.bag.splice(o.i, 1); else { save.storage[o.id]--; if (save.storage[o.id] <= 0) delete save.storage[o.id]; }
         if (ch.held) storeKeep(ch.held);
@@ -2222,7 +2440,7 @@ const Game = (() => {
   function switchChar(sp) {
     if (!save.roster[sp]) save.roster[sp] = newEntry(sp);
     save.current = sp; persist(); renderTown();
-    UI.toast(`${jo(spName(sp), '으로')} 변경했습니다.`);
+    UI.toast(`${jo(monName(sp), '으로')} 변경했습니다.`);
   }
 
   function setMoves(sp = save.current) {
@@ -2233,7 +2451,7 @@ const Game = (() => {
     if (!all.length) { UI.alert('기술 설정', '<p>배울 수 있는 기술이 없습니다.</p>'); return; }
     const sel = new Set(ch.moves);
     UI.open({
-      title: `${esc(spName(sp))} 기술 설정 (최대 4개)`, wide: true,
+      title: `${esc(monName(sp))} 기술 설정 (최대 4개)`, wide: true,
       html: `<p class="dim">현재 레벨까지 배울 수 있는 기술(진화 전 모습과 지금 고른 모습의 기술 포함), 기술머신·🧬교배기술머신으로 배운 기술 중에서 자유롭게 고르세요. <b>?</b>를 누르면 기술 설명을 볼 수 있습니다.</p><div class="move-pick">${all.map(id => `<label class="move-row"><input type="checkbox" value="${id}" ${sel.has(id) ? 'checked' : ''}> ${moveLine(id)}${egg.has(id) && !learnableUpTo(sp, MAX_LEVEL).includes(id) ? ' <span class="tag" title="교배기술">🥚</span>' : ''}${masteryStar(sp, id)}<span class="info" data-move="${id}" data-sp="${sp}" title="기술 정보">?</span></label>`).join('')}</div>`,
       choices: [{ label: '저장', fn: () => { ch.moves = [...sel]; persist(); renderTown(); } }, { label: '취소', fn: () => {} }],
       onOpen: box => {
@@ -2370,10 +2588,13 @@ const Game = (() => {
       <div class="row"><span class="grow">버튼 배치 <span class="dim">(자동: 닌텐도 컨트롤러면 닌텐도식)</span></span>${sel('gpLayout', [['auto', '자동'], ['xbox', 'Xbox식 (아래 A·오른쪽 B)'], ['nintendo', '닌텐도식 (오른쪽 A·아래 B)']], s.gpLayout || 'auto')}</div>
       <div class="btns"><button class="btn ghost" data-sact="gp">🎮 컨트롤러 조작 안내</button></div>`;
     if (c === 'play') return `<label class="chk"><input type="checkbox" data-set="autoDescend" ${s.autoDescend ? 'checked' : ''}> 자동 탐색·계단(G)으로 계단에 도착하면 바로 내려가기</label>
+      <label class="chk"><input type="checkbox" data-set="noDangerBlink" ${s.noDangerBlink ? 'checked' : ''}> 💓 위험 신호 끄기 <span class="dim">(HP가 1/4 이하거나 배고픔이 0일 때 화면이 깜빡이는 신호)</span></label>
+      <label class="chk"><input type="checkbox" data-set="noBumpAttack" ${s.noBumpAttack ? 'checked' : ''}> 🚶 이동키로 공격하지 않기 <span class="dim">(적이 있는 쪽으로 움직이면 공격하지 않고 그쪽을 바라보기만 해요. 공격은 공격 키·버튼으로)</span></label>
       <label class="chk"><input type="checkbox" data-set="noGift" ${s.noGift ? 'checked' : ''}> 💌 감사 선물 받지 않기 <span class="dim">(구조 게시판으로 구조하면 요청자에게 선물 고르는 창이 뜨지 않아요. 그래도 선물이 오면 판매 값만큼 돈으로 받아요. 구조 보답은 그대로)</span></label>
       <p class="dim">자동 판매는 창고 탭, 빠른 사용은 던전의 가방에서 정할 수 있어요.</p>`;
     return `<label class="chk"><input type="checkbox" data-set="origTiles" ${s.origTiles !== false ? 'checked' : ''}> 🗺 원작 던전 그림 (끄면 게임이 직접 그린 단순한 타일)</label>
       <div class="row"><span class="grow">🔍 던전 화면 크기 <span class="dim">(작을수록 넓게 보여요. 자동: 넓은 화면 3배, 그 밖 2배)</span></span>${sel('viewScale', VIEW_SCALES, String(s.viewScale || ''))}</div>
+      <label class="chk"><input type="checkbox" data-set="hideUnexplored" ${s.hideUnexplored ? 'checked' : ''}> 🌑 안 가 본 곳 완전히 가리기 <span class="dim">(끄면 지형만 어둡게 비쳐 보여요. 적·아이템·계단은 가 보기 전에는 안 보여요)</span></label>
       <label class="chk"><input type="checkbox" data-set="fast" ${s.fast ? 'checked' : ''}> 빠른 연출</label>`;
   }
   function openSettings(cat, back) {
@@ -2459,7 +2680,12 @@ const Game = (() => {
   function chooseCharacter(cb, first, only, back, opts = {}) {
     const favMode = !!(only && !first);   // 영입한 포켓몬 고르기: ⭐ 즐겨찾기를 앞에
     const ids = (only || SPECIES_IDS.map(Number)).slice().sort(byDex);
-    if (favMode) ids.sort((a, b) => isFav(b) - isFav(a));
+    // 영입한 포켓몬 정렬: 도감 번호 / 레벨 높은 순 / 많이 데려간 순 (리더 + 동료 횟수). 즐겨찾기는 늘 앞에
+    const used = id => ((save.usage && save.usage.lead && save.usage.lead[id]) || 0) + ((save.usage && save.usage.party && save.usage.party[id]) || 0);
+    const SORTS = { dex: byDex, lv: (a, b) => (save.roster[b]?.lv || 0) - (save.roster[a]?.lv || 0) || byDex(a, b), used: (a, b) => used(b) - used(a) || byDex(a, b) };
+    const sortBy = () => SORTS[save.settings.pkSort] || byDex;
+    const order = (a, b) => (isFav(b) - isFav(a)) || sortBy()(a, b);
+    if (favMode) ids.sort(order);
     const gens = [...new Set(ids.map(id => DATA.species[id].g))].sort((a, b) => a - b);
     UI.open({
       title: opts.title || (first ? '함께 모험할 포켓몬을 고르세요' : '캐릭터 변경'), wide: true, cancel: first ? false : undefined,
@@ -2467,10 +2693,11 @@ const Game = (() => {
         <select id="pk-g"><option value="">전체 세대</option>${gens.map(g => `<option value="${g}">${g}세대</option>`).join('')}</select>
         <select id="pk-t"><option value="">전체 타입</option>${DATA.types.map((t, i) => `<option value="${i + 1}">${t}</option>`).join('')}</select>
         ${first ? '' : pokeClassSelect('pk-k')}
-        ${favMode ? `<label class="pk-favonly"><input type="checkbox" id="pk-f"> ⭐ 즐겨찾기만</label>` : ''}
+        ${favMode ? `<select id="pk-s" title="정렬"><option value="dex">도감 번호순</option><option value="lv"${save.settings.pkSort === 'lv' ? ' selected' : ''}>레벨순</option><option value="used"${save.settings.pkSort === 'used' ? ' selected' : ''}>많이 데려간 순</option></select>
+        <label class="pk-favonly"><input type="checkbox" id="pk-f"> ⭐ 즐겨찾기만</label>` : ''}
         <button class="btn sm ghost" id="pk-r">무작위</button>${back ? ' <button class="btn sm ghost" id="pk-back">← 방법 다시 고르기</button>' : ''}</div>
-        <div class="picker" id="pk-grid">${ids.map(id => `<button class="pk" data-id="${id}" data-s="${(DATA.species[id].n + ' ' + DATA.species[id].e + ' ' + dexNo(id) + ' ' + id).toLowerCase()}" data-g="${DATA.species[id].g}" data-t="${DATA.species[id].t.join(',')}" data-k="${pokeClass(id)}">
-          ${favMode ? `<b class="fav${isFav(id) ? ' on' : ''}" data-fav="${id}" title="즐겨찾기">${isFav(id) ? '★' : '☆'}</b>` : ''}${portraitImg(id, 'portrait sm', 'Normal', !!(only && !first && save && save.roster[id]?.shiny))}<span>${esc(DATA.species[id].n)}</span>${save && save.roster && save.roster[id] ? `<i>Lv${save.roster[id].lv} ${medalIcons(id)}</i>` : ''}${heldOfRoster(id) ? `<b class="pk-held" title="지닌 물건: ${esc(ITEMS[heldOfRoster(id)].n)}">${Gfx.iconHtml(heldOfRoster(id))}</b>` : ''}</button>`).join('')}</div>`,
+        <div class="picker" id="pk-grid">${ids.map(id => `<button class="pk" data-id="${id}" data-s="${esc((DATA.species[id].n + ' ' + DATA.species[id].e + ' ' + dexNo(id) + ' ' + id + ' ' + (only && !first && save && save.roster[id]?.nick || '')).toLowerCase())}" data-g="${DATA.species[id].g}" data-t="${DATA.species[id].t.join(',')}" data-k="${pokeClass(id)}">
+          ${favMode ? `<b class="fav${isFav(id) ? ' on' : ''}" data-fav="${id}" title="즐겨찾기">${isFav(id) ? '★' : '☆'}</b>` : ''}${portraitImg(id, 'portrait sm', 'Normal', !!(only && !first && save && save.roster[id]?.shiny))}<span>${esc(only && !first ? monName(id) : DATA.species[id].n)}</span>${save && save.roster && save.roster[id] ? `<i>Lv${save.roster[id].lv} ${medalIcons(id)}</i>` : ''}${heldOfRoster(id) ? `<b class="pk-held" title="지닌 물건: ${esc(ITEMS[heldOfRoster(id)].n)}">${Gfx.iconHtml(heldOfRoster(id))}</b>` : ''}</button>`).join('')}</div>`,
       onOpen: (box, m) => {
         const q = box.querySelector('#pk-q'), g = box.querySelector('#pk-g'), t = box.querySelector('#pk-t'), f = box.querySelector('#pk-f'), k = box.querySelector('.pk-k');
         const filter = () => {
@@ -2481,6 +2708,8 @@ const Game = (() => {
           });
         };
         q.oninput = filter; g.onchange = filter; t.onchange = filter; if (k) k.onchange = filter; if (f) f.onchange = filter;
+        const resort = () => { const grid = box.querySelector('#pk-grid'); [...grid.children].sort((a, b) => order(+a.dataset.id, +b.dataset.id)).forEach(b => grid.appendChild(b)); };
+        const so = box.querySelector('#pk-s'); if (so) so.onchange = () => { save.settings.pkSort = so.value; persist(); resort(); };
         if (back) box.querySelector('#pk-back').onclick = () => { UI.close(m); setTimeout(back, 0); };
         box.querySelector('#pk-r').onclick = () => { const vis = [...box.querySelectorAll('.pk')].filter(b => b.style.display !== 'none'); if (vis.length) confirmPick(+pick(vis).dataset.id); };
         const confirmPick = async id => {
@@ -2496,9 +2725,7 @@ const Game = (() => {
           if (fv) {   // ⭐ 누르면 즐겨찾기만 바꾸고 고르지는 않는다
             const id = +fv.dataset.fav, on = toggleFav(id);
             fv.classList.toggle('on', on); fv.textContent = on ? '★' : '☆';
-            const grid = box.querySelector('#pk-grid'), btns = [...grid.children];
-            btns.sort((a, b) => (isFav(+b.dataset.id) - isFav(+a.dataset.id)) || byDex(+a.dataset.id, +b.dataset.id)).forEach(b => grid.appendChild(b));
-            filter(); return;
+            resort(); filter(); return;
           }
           const b = e.target.closest('.pk'); if (b) confirmPick(+b.dataset.id);
         };
@@ -2528,7 +2755,7 @@ const Game = (() => {
       const ok = await UI.confirm(esc(dg.n), `<p>${dg.floors}층짜리 던전입니다. (적 Lv ${dg.lv[0]}~${dg.lv[1]}, 내 레벨 ${ch.lv})</p>
         <p>가방: ${save.bag.length}/${bagMax()}칸${save.bag.length ? '' : ' <span class="warn">(비어 있음!)</span>'}</p>
         ${ms.length ? `<p>이 던전의 임무: ${ms.map(m => m.floor + 'F').join(', ')}</p>` : ''}
-        ${partyList().length ? `<p>🤝 동료: ${partyList().map(id => `${esc(spName(id))} Lv${save.roster[id].lv}`).join(', ')}</p>` : `<p class="dim">혼자 갑니다. 혼자 탐험 보정으로 적에게 받는 데미지가 ${SOLO_DMG_MUL}배, HP를 뺀 능력치가 ${SOLO_STAT_MUL}배예요. (캐릭터 탭에서 동료를 고를 수 있어요)</p>`}
+        ${partyList().length ? `<p>🤝 동료: ${partyList().map(id => `${esc(monName(id))} Lv${save.roster[id].lv}`).join(', ')}</p>` : `<p class="dim">혼자 갑니다. 혼자 탐험 보정으로 적에게 받는 데미지가 ${SOLO_DMG_MUL}배, HP를 뺀 능력치가 ${SOLO_STAT_MUL}배예요. (캐릭터 탭에서 동료를 고를 수 있어요)</p>`}
         ${dg.megaMul ? megaFocusHtml() : ''}
         <p class="dim">쓰러지면 가방 아이템의 절반(무작위)과 이번 탐험에서 주운 돈을 잃습니다. 레벨은 유지됩니다.</p>`, '출발한다', '그만둔다', [],
         box => { const s = box.querySelector('[data-megafocus]'); if (s) s.onchange = () => { save.megaFocus = s.value || null; persist(); }; });
@@ -3460,7 +3687,7 @@ const Game = (() => {
   // 상점 기술머신 분류 (다음 진열부터)
   function setTmFocus(v) { save.tmFocus = v || null; persist(); UI.toast(v ? '다음 진열부터 그 분류의 기술머신만 나와요. (🔄 새로고침하거나 다음 날)' : '기술머신 분류를 고르지 않았어요.'); }
   function setMissionFocus(id) { save.missionFocus = id || null; persist(); UI.toast(id ? `${dungeonById(id).n}의 의뢰가 더 자주 붙어요. (다음 새 의뢰부터)` : '자주 뜨는 지역을 해제했어요.'); }
-  return { eventList, playEvent, persist, rescueNow, rescueDialog, poke: () => { lastInput = Date.now(); if (idle) wakeIdle(); }, missionAlert, logSale, setTmFocus, shinyOk, setMissionFocus, hasClears, medalSection, dexMedals, askUpdate, recruit, unlockShiny, showMissions, importSave, noteShiny, boot, endRun, saveRunSnapshot, dungeonMenu, setSetting, renderTown, get save() { return save; }, setTab(t) { tab = t; renderTown(); } };
+  return { missionText, eventList, playEvent, persist, rescueNow, rescueDialog, poke: () => { lastInput = Date.now(); if (idle) wakeIdle(); }, missionAlert, logSale, setTmFocus, shinyOk, setMissionFocus, hasClears, medalSection, dexMedals, askUpdate, recruit, unlockShiny, showMissions, importSave, noteShiny, boot, endRun, saveRunSnapshot, dungeonMenu, setSetting, renderTown, get save() { return save; }, setTab(t) { tab = t; renderTown(); } };
 })();
 
 window.addEventListener('DOMContentLoaded', () => {

@@ -32,7 +32,7 @@ const Dex = (() => {
       <select class="dex-g"><option value="">전체 세대</option>${gens.map(g => `<option value="${g}">${g}세대</option>`).join('')}</select>
       <select class="dex-t"><option value="">전체 타입</option>${DATA.types.map((t, i) => `<option value="${i + 1}">${t}</option>`).join('')}</select>
       ${pokeClassSelect('dex-k')}
-      <select class="dex-c"><option value="">전체</option><option value="1,2">만난 포켓몬</option><option value="2">쓰러뜨린 포켓몬</option><option value="0,1">아직 못 쓰러뜨린 포켓몬</option><option value="0">아직 못 만난 포켓몬</option><option value="r">🤝 영입한 포켓몬</option><option value="s">✨ 이로치를 얻은 포켓몬</option><option value="s0">이로치를 아직 못 얻은 포켓몬</option><option value="sx">이로치 그림이 없는 포켓몬</option></select>
+      <select class="dex-c"><option value="">전체</option><option value="1,2">만난 포켓몬</option><option value="2">쓰러뜨린 포켓몬</option><option value="0,1">아직 못 쓰러뜨린 포켓몬</option><option value="0">아직 못 만난 포켓몬</option><option value="r">🤝 영입한 포켓몬</option><option value="r0">아직 영입하지 못한 포켓몬</option><option value="s">✨ 이로치를 얻은 포켓몬</option><option value="s0">이로치를 아직 못 얻은 포켓몬</option><option value="sx">이로치 그림이 없는 포켓몬</option></select>
       <span class="dim dex-count"></span></div>
       ${(() => { medals = Game.save ? Game.dexMedals() : {}; return ''; })()}
       <div class="picker dex-grid">${ids.map(id => { const d = DATA.species[id], st = state(id), md = medals[id] || ''; return `<button class="pk dex-item${st ? '' : ' unseen'}" data-dexpoke="${id}"
@@ -40,14 +40,16 @@ const Dex = (() => {
         ${portraitImg(id, 'portrait sm')}<span>${esc(d.n)}</span><i class="dim">${dexNo(id)}${st === 2 ? ' ⚔' : st === 1 ? ' 👁' : ''}</i>${md ? `<i class="dex-medals">${md}</i>` : ''}${own(id) ? '<i class="dex-own" title="영입한 포켓몬">🤝</i>' : ''}${shinyMine(id) ? '<i class="dex-shiny" title="이로치를 얻었어요">✨</i>' : ''}</button>`; }).join('')}</div>`;
   }
 
+  const RANGE_ORDER = ['앞', '앞 2칸', '원거리', '주변', '자신'];   // 범위 고르기 순서 (없는 값은 맨 앞)
   function renderMoves() {
     const ids = Object.keys(DATA.moves).map(Number).sort((a, b) => DATA.moves[a].t - DATA.moves[b].t || DATA.moves[a].n.localeCompare(DATA.moves[b].n, 'ko'));
     return `<div class="picker-bar"><input class="dex-q" placeholder="기술 이름 검색" autocomplete="off">
       <select class="dex-t"><option value="">전체 타입</option>${DATA.types.map((t, i) => `<option value="${i + 1}">${t}</option>`).join('')}</select>
       <select class="dex-c"><option value="">전체 분류</option><option value="2">물리</option><option value="3">특수</option><option value="1">변화</option></select>
+      <select class="dex-k"><option value="">전체 범위</option>${[...new Set(ids.map(rangeShort))].sort((a, b) => RANGE_ORDER.indexOf(a) - RANGE_ORDER.indexOf(b)).map(r => `<option value="${esc(r)}">${esc(r)}</option>`).join('')}</select>
       <span class="dim dex-count"></span></div>
       <table class="dex-table"><thead><tr><th>타입</th><th>이름</th><th>분류</th><th>위력</th><th>명중</th><th>PP</th><th>범위</th></tr></thead><tbody>
-      ${ids.map(id => { const m = DATA.moves[id]; return `<tr class="dex-item" data-dexmove="${id}" data-s="${esc(m.n.toLowerCase())}" data-t="${m.t}" data-c="${m.c}">
+      ${ids.map(id => { const m = DATA.moves[id]; return `<tr class="dex-item" data-dexmove="${id}" data-s="${esc(m.n.toLowerCase())}" data-t="${m.t}" data-c="${m.c}" data-k="${esc(rangeShort(id))}">
         <td><span class="type" style="background:${TYPE_COLORS[m.t - 1]}">${typeName(m.t)}</span></td><td><b>${esc(m.n)}</b></td><td>${CLS[m.c]}</td>
         <td>${m.p || '—'}</td><td>${m.a || '—'}</td><td>${m.pp}</td><td>${rangeShort(id)}</td></tr>`; }).join('')}
       </tbody></table>`;
@@ -80,7 +82,7 @@ const Dex = (() => {
       let n = 0;
       for (const b of items) {
         const ok = (!s || b.dataset.s.includes(s)) && (!g || !g.value || b.dataset.g === g.value) && (!k || !k.value || (b.dataset.k || '').split(',').includes(k.value))
-          && (!t || !t.value || b.dataset.t.split(',').includes(t.value)) && (!c || !c.value || (c.value === 'r' ? !!b.dataset.r : c.value === 's' ? b.dataset.sh === 'y' : c.value === 's0' ? b.dataset.sh === 'n' : c.value === 'sx' ? b.dataset.sh === 'x' : c.value.split(',').includes(b.dataset.c)));
+          && (!t || !t.value || b.dataset.t.split(',').includes(t.value)) && (!c || !c.value || (c.value === 'r' ? !!b.dataset.r : c.value === 'r0' ? !b.dataset.r : c.value === 's' ? b.dataset.sh === 'y' : c.value === 's0' ? b.dataset.sh === 'n' : c.value === 'sx' ? b.dataset.sh === 'x' : c.value.split(',').includes(b.dataset.c)));
         b.style.display = ok ? '' : 'none';
         if (ok) n++;
       }
@@ -201,8 +203,8 @@ const Dex = (() => {
 
   function showItem(id) {
     const it = ITEMS[id];
-    const sig = it.sig ? it.hold.only.filter(sp => DATA.species[sp]).map(spName).join('·') : '';
-    const where = sig ? [`마을 상점에 가끔 진열 (₽${it.price})`, `${sig}이(가) 나오는 던전에서 드물게 발견`]
+    const sig = it.sig ? it.who || it.hold.only.filter(sp => DATA.species[sp]).map(spName).join('·') : '';
+    const where = sig ? [...(it.tradeOnly ? [] : [`마을 상점에 가끔 진열 (₽${it.price})`, `${sig}이(가) 나오는 던전에서 드물게 발견`]), ...(SIG_TRADE_ITEMS.includes(id) ? [`교환 탭의 삐딱구리 트레이드 (티켓 ${SIG_TICKETS}장)`] : [])]
       : it.special ? ['업적 「도감 완성」(모든 포켓몬 만나기) 보상', `업적을 달성하면 마을 상점에 늘 진열 (₽${it.price})`]
       : [shopSet.has(id) ? `상점에서 ₽${it.price}에 구매` : '', dropSet.has(id) ? `던전 바닥에서 발견 (${dropStagesOf(id).map(i => DROP_STAGE_NAMES[i]).join('·')} 단계${ITEM_LV_RANGE[id] ? ` · 적 Lv${ITEM_LV_RANGE[id][1] < Infinity ? `${ITEM_LV_RANGE[id][1]} 미만` : `${ITEM_LV_RANGE[id][0]} 이상`} 층` : ''})` : ''].filter(Boolean);
     const how = it.vit ? '마을의 캐릭터 탭에서 먹인다. 효과는 그 포켓몬에게 영구히 남는다.' : it.tm ? `마을의 캐릭터 탭이나 던전 가방에서 사용한다. 배울 수 있는 포켓몬 ${SPECIES_IDS.filter(s => canLearnTM(+s, it.mv)).length}종.` : it.held ? '마을의 캐릭터 탭이나 던전 가방에서 지니게 하면 효과를 발휘한다. (한 번에 하나)' : it.use && it.use !== 'none' ? '던전에서 사용하거나 던질 수 있다.' : it.throw ? '던전에서 적에게 던져서 사용한다.' : id === 'stone' || id === 'link' ? '마을의 캐릭터 탭에서 진화할 때 소모된다.' : id === 'reviver' ? '가방에 있으면 쓰러질 때 자동으로 사용된다.' : '';

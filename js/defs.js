@@ -3,15 +3,16 @@
 
 // 게임 버전: 업데이트할 때 올리고, index.html의 ?v= 숫자도 같이 올린다
 // (친구와 구조 코드·오늘의 도전을 주고받으려면 버전이 같아야 한다)
-const GAME_VERSION = '0.99';
+const GAME_VERSION = '0.100';
 // 버전 비교: '0.25' > '0.9' 처럼 숫자로 비교한다
 function cmpVer(a, b) {
   const x = String(a).split('.').map(Number), y = String(b).split('.').map(Number);
   for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return Math.sign(d); }
   return 0;
 }
-const GAME_DATE = '2026-10-10';
+const GAME_DATE = '2026-10-11';
 const VERSION_NOTES = [
+  ["0.100", ["빛나는부적이 지니지 않아도 늘 적용됩니다. 도감 완성 업적을 이루면 이로치를 만날 확률이 2배가 됩니다. 가지고 있던 부적은 회수하며, 상점에서 산 부적은 ₽50000씩 돌려드립니다", "첫 던전인 작은 숲의 보스가 부하 없이 혼자 나오고, 레벨 +3 보정이 없어집니다", "임무가 남은 층에서 계단을 쓰면 경고 창이 뜹니다. 자동으로 내려가기를 켜 두어도 묻습니다", "도감의 기술 목록을 범위(앞·앞 2칸·원거리·주변·자신)로도 찾을 수 있습니다", "캐릭터 변경·동료 추가 창에서 레벨순, 많이 데려간 순으로도 정렬할 수 있습니다", "리더 특성의 필드 효과를 추가했습니다. 타오르는불꽃(불꽃)·마중물(물)·정전기·피뢰침(전기)·자력(강철)·수확(풀)이면 그 타입 포켓몬이 2배 잘 나오고, 복안·대운이면 적이 물건을 떨어뜨리는 확률이 2배가 됩니다", "마을에 🎟 교환 탭을 추가했습니다. 얼루기에게 창고의 쓰지 않는 도구 10개를 티켓 1장으로 바꾸고, 티켓으로 이상한사탕·특성캡슐·영양제·구미 등과 교환하거나 뽑기를 할 수 있습니다. 뽑기에서는 드물게 무지개구미나 메가스톤도 나오고 (메가스톤은 미리 고르거나 나온 뒤에 원하는 것을 고릅니다), 10번 뽑기는 1번을 덤으로 더 뽑습니다. 티켓은 한 장에 ₽3000으로 살 수도 있습니다. 삐딱구리 트레이드에서는 티켓 50장으로 전용 도구(전기구슬·굵은뼈 등, 전설·환상 포켓몬의 도구는 제외)를 하나 고를 수 있습니다", "탑·산처럼 올라가는 던전에서는 계단 창이 \"올라가시겠습니까?\"로 나옵니다", "컨트롤러의 LB·RB·LT·RT·Back·Start 버튼에도 원하는 행동을 둘 수 있습니다 (⚙ 조작 설정)", "팀 프리셋을 추가했습니다. 캐릭터 카드의 동료 옆 📋 팀 프리셋에서 리더와 동료 구성을 8개까지 저장하고 바로 불러올 수 있습니다", "스타팅 포켓몬 27계열의 전용 도구를 추가했습니다 (진흙팩·꼬리불꽃부적·등껍질조각 등). 그 진화 계열이 지니면 자기 타입 기술이 강해지고 계열마다 특별한 효과가 붙습니다. 삐딱구리 트레이드에서만 얻을 수 있습니다", "날씨로 모습이 바뀌는 포켓몬의 전용 도구를 추가했습니다. 체리꼬가 햇살꽃잎을 지니면 날씨와 상관없이 포지폼이 되고 플라워기프트도 발동합니다. 캐스퐁은 뜨거운바위·축축한바위·차가운바위로 태양·빗방울·설운의 모습을 고정할 수 있습니다", "인기 포켓몬 34계열의 전용 도구를 추가했습니다 (이브이 계열 진화의리본, 망나뇽 계열 용의깃털, 한카리아스 계열 상어지느러미, 루카리오 계열 파동의띠 등, 전설·환상 제외). 삐딱구리 트레이드에서 얻을 수 있고, 검색칸으로 찾을 수 있습니다", "교환 탭에 🔨 전용 도구 강화를 추가했습니다. 삐딱구리 트레이드에서 얻을 수 있는 전용 도구를 +3까지 강화할 수 있고, 단계마다 효과가 조금씩 강해집니다. 재료는 티켓, 그 도구 타입의 타입 강화 도구(목탄·신비의물방울 등), 돈입니다. 한 번 강화하면 같은 도구는 모두 강해집니다", "영입한 포켓몬에게 별명을 붙일 수 있습니다. 캐릭터 탭의 ✏ 이름 바꾸기나 동료 칸의 ✏ 이름에서 바꾸며, 던전 메시지와 캐릭터 고르기 창에도 별명으로 나오고 별명으로 검색할 수 있습니다. 진화해도 별명은 그대로입니다", "전용 도구 강화 화면에도 검색칸을 추가했습니다", "필드를 추가했습니다. 그래스필드·미스트필드·일렉트릭필드·사이코필드 기술을 배울 수 있고(레벨업·기술머신), 일렉트릭메이커 등 메이커 특성도 이제 층에 필드를 깝니다. 필드는 30턴 동안 이어지며 (화면 위에 남은 턴 표시), 땅에 있는 포켓몬에게 회복·타입 강화·상태이상 방지·선제기 방지 같은 효과를 줍니다. 대지의파동·와이드포스·미스트버스트도 필드에 따라 강해집니다", "📲 앱으로 설치할 수 있습니다. 정보 탭의 📲 앱으로 설치에서 바탕화면·홈 화면에 설치하면, 한 번 본 화면과 그림은 인터넷이 없어도 플레이할 수 있습니다", "창고 확장이 한 번에 20칸 → 40칸으로 늘었고, 확장 비용은 2배씩이 아니라 1.5배씩 오르며, 최대 660칸 → 1000칸까지 늘릴 수 있습니다", "💿 기술머신 보관함의 ℹ를 누르면 기술 정보와 배우는 포켓몬을 볼 수 있습니다", "설정(플레이)에 🚶 이동키로 공격하지 않기를 추가했습니다. 켜면 이동하다가 적 쪽으로 움직여도 공격하지 않고 그쪽을 바라보기만 합니다", "틀깨기·터보블레이즈·테라볼티지(그리고 공격할 때 상대 특성을 무시하는 특성)가 옹골참을 무시하지 못하던 문제를 고쳤습니다", "구조 게시판의 🔄 새로고침이 최대 5분 동안 예전 목록을 보여 주어 방금 올라온 요청이 안 보이던 문제를 고쳤습니다. 또 게시판에는 최근 30분 안의 요청만 보이고, 다른 사람이 구조하러 간 요청은 빼고 10칸을 채워서 새 요청이 가려지지 않습니다", "HP가 1/4 이하거나 배고픔이 0이면 화면 위 HP·배 칸과 던전 화면 UI 테두리가 빨갛게 깜빡여서 위험을 알립니다 (설정의 플레이에서 끌 수 있습니다)", "도감 포켓몬 필터에 \"아직 영입하지 못한 포켓몬\"을 추가했습니다", "던전에서 아직 가 보지 않은 곳이 새까맣게 가려지지 않고, 지나온 곳처럼 지형이 어둡게 비쳐 보입니다. 적·아이템·계단은 가 보기 전에는 보이지 않으며, 설정(화면)에서 예전처럼 완전히 가릴 수 있습니다", "상점의 기술머신이 긴 설명 대신 타입·분류·위력·명중·범위 한 줄로 나오고, ℹ로 자세한 정보를 볼 수 있습니다", "원작처럼 던전의 벽 자리에 물·용암 웅덩이와 호수가 생깁니다. 물은 물 타입, 용암은 불꽃 타입, 비행 타입과 부유 특성은 둘 다 들어갈 수 있고, 자동 탐색은 웅덩이를 지나는 길로 가지 않습니다. 웅덩이 한가운데처럼 닿지 않는 곳의 적은 자동 탐색이 무시하고 계속 움직이다가, 공격이 닿거나 걸어서 다가갈 수 있게 되면 자동 전투를 합니다", "테라파고스 스텔라폼을 추가했습니다. 전용 도구 스텔라결정을 지니면 스텔라폼이 되고, 특성 제로포밍으로 등장할 때 날씨와 필드를 모두 없앱니다. 던전 그림은 아직 없어 테라스탈폼의 그림을 빌려 씁니다", "치료씨가 떨어진 능력까지 되돌리던 문제를 고쳤습니다. 이제 상태이상만 고치고, 떨어진 능력은 리샘열매가 되돌립니다"]],
   ["0.99", ["자동 탐색 중 계단이나 켈리몬 상점을 발견하면 바로 앞에서 멈춥니다. 다시 자동 탐색을 누르면 남은 곳을 계속 탐색합니다", "체리꼬가 쾌청일 때 포지폼으로 바뀝니다", "플라워기프트를 원작처럼 바꿨습니다. 쾌청일 때 자신과 같은 편 모두의 공격과 특수방어가 1.5배가 됩니다 (평소에는 효과 없음)", "루브도가 스케치를 배웁니다. 바로 앞의 상대가 가진 기술 중 하나를 골라 영구히 배웁니다. Lv1·11·21…91이 될 때마다 한 번씩 쓸 수 있습니다", "틀깨기·테라볼티지·터보블레이즈로 공격하면 상대의 플라워기프트·이상한비늘 효과를 무시합니다", "하드 던전 보스가 더 강해졌습니다 (HP 3.5배 → 7배, 능력치 1.1배 → 1.25배)", "하드 던전의 일반 적도 HP 1.5배, 능력치 1.1배가 됩니다. 하드 던전에서는 배고픔이 1.5배 빨리 닳고, 보스방에서 보스와 2칸 더 가까이에서 시작합니다", "모르페코의 모습이 매 턴이 아니라 5턴마다 바뀝니다", "따라큐는 탈이 벗겨지면 모습이 바뀝니다. 네크로즈마는 울트라네크로Z를 지니면 울트라네크로즈마가 됩니다 (특성 브레인포스: 효과가 굉장한 기술의 데미지 1.25배)", "하드 던전도 가방을 일반 던전처럼 가져갑니다 (기본 아이템 없음). 쓰러지면 일반 던전처럼 가방 아이템 절반과 주운 돈을 잃습니다", "하드 던전의 ℹ 정보에 하드 규칙(고정 레벨, 적·보스 배율, 아이템 등급 등)이 나옵니다", "가이드의 이로치·영입 설명을 🤝 동료 항목으로 옮겼습니다. 캐릭터 탭의 영입 확률에 친구리본 효과도 함께 표시합니다", "자동 판매 창을 바꿨습니다. 일반·지닌 물건·기술머신·전용 도구·메가스톤으로 나눠 보고, 이름으로 검색해서 켤 수 있습니다. 창고에 있는 것을 분류별로 한 번에 켤 수도 있습니다", "하드 던전 클리어 기록을 캐릭터마다가 아니라 계정 하나로 남깁니다. 하드 탭에 하드 클리어 진행도가 나옵니다", "마스터 랭크 뒤로 2000점마다 별이 붙습니다 (마스터 ★1, ★2 …). 별이 오를 때마다 무지개구미를 받습니다", "이야기 다시 보기에 짧은 이벤트(탐험대 승급식, 마스터 별 승급식, 구린내 탐험대의 구조)를 넣었습니다. 본 것만 열리고, 본편을 모두 보거나 엔딩을 보면 모두 열립니다", "구조 요청의 48시간 제한(구조 실패)을 없앴습니다. 30분 동안 아무도 구조하지 않으면 구린내 탐험대가 대신 구조합니다", "코드 구조를 간단하게 바꿨습니다. 구조한 친구는 그 자리에서 구조 보답을 받고, 구조받은 쪽은 A-OK 코드만 넣으면 바로 이어서 탐험합니다 (감사 코드 없음). 보낸 A-OK 코드는 최근 48시간 것만 보입니다", "탐험대 등급이 오를 때마다 영입 확률이 1%p씩 오릅니다 (마스터 +8%p). 전설·환상은 그 절반입니다", "가방·창고 확장 비용이 소수점이 되어 가진 돈에 소수점이 생기던 문제를 고쳤습니다. 이미 소수점이 된 돈은 내림합니다"]],
   ["0.98", ["마을 상점에서 숙련맥스를 늘 팝니다 (₽10000). 캐릭터 탭에서 쓰면 기술 하나의 숙련도가 바로 ★10이 됩니다", "본가에서 삭제되어 빠져 있던 기술 56종을 되살렸습니다 (은빛바람·괴상한바람·시그널빔·비밀의힘 등). 레벨업·기술머신·교배기술머신으로 배울 수 있습니다", "구조된 뒤 던전 목록에 '구조 대기 중'으로 막혀 보이던 문제를 고쳤습니다. 그 던전 버튼에서 바로 이어서 탐험할 수 있습니다", "구조 게시판의 요청은 올린 지 7일이 지나면 서버에서 자동으로 지웁니다", "껍질깨기·비축하기·정리정돈·제살깎기를 넣었습니다. 파르셀·셀러 등이 배웁니다. 껍질깨기는 자신의 방어·특수방어도 떨어집니다"]],
   ["0.97", ["구조 요청은 계정마다 2분에 하나까지 올릴 수 있습니다 (게시판 도배 방지)", "스타팅 순위와 엔딩 통계는 로그인한 상태에서 볼 수 있습니다"]],
@@ -122,14 +123,14 @@ const SPRITE_BASE = 'https://cdn.jsdelivr.net/gh/PMDCollab/SpriteCollab@master';
 const spriteFallback = url => url.replace(SPRITE_BASE, SPRITE_RAW);
 const TILE = 24;
 const BAG_BASE = 16, BAG_STEP = 4, BAG_LIMIT = 48;
-const STORAGE_BASE = 300, STORAGE_STEP = 20, STORAGE_LIMIT = 660;   // v0.44: 기본 40 → 300 (확장 18단계는 그대로)
+const STORAGE_BASE = 300, STORAGE_STEP = 40, STORAGE_LIMIT = 1000;   // v0.44: 기본 40 → 300. v0.100: 한 번에 20 → 40칸, 최대 660 → 1000칸 (18단계, 마지막은 980 → 1000)
 const OLD_STORAGE_BASE = 40;   // v0.43까지의 기본 (옛 세이브의 확장 단계 계산용)
 const bagMax = () => (typeof Game !== 'undefined' && Game.save && Game.save.bagMax) || BAG_BASE;
-// 확장 비용: 확장할수록 두 배씩
+// 확장 비용: 가방은 확장할수록 두 배씩, 창고는 1.5배씩 (v0.100, ₽10 단위로 반올림)
 // 칸 수가 단계 사이에 있으면 (창고에 칸보다 많이 들어 있던 세이브 등) 지금 단계로 센다: 비용은 늘 정수, 확장하면 다음 단계 칸 수로 (v0.99 수정)
 const upStep = (cur, base, step) => Math.max(0, Math.floor((cur - base) / step));
 const bagUpgradeCost = cur => 300 * 2 ** upStep(cur, BAG_BASE, BAG_STEP);
-const storageUpgradeCost = cur => 200 * 2 ** upStep(cur, STORAGE_BASE, STORAGE_STEP);
+const storageUpgradeCost = cur => Math.round(200 * 1.5 ** upStep(cur, STORAGE_BASE, STORAGE_STEP) / 10) * 10;
 const bagNext = cur => BAG_BASE + (upStep(cur, BAG_BASE, BAG_STEP) + 1) * BAG_STEP;
 const storageNext = cur => STORAGE_BASE + (upStep(cur, STORAGE_BASE, STORAGE_STEP) + 1) * STORAGE_STEP;
 const START_LEVEL = 5;
@@ -191,7 +192,7 @@ Object.assign(ITEMS, {
   pecha:   { n: '복슝열매', d: '독을 고친다.', price: 40, use: 'cureOne', st: 'psn', icon: '🍑' },
   rawst:   { n: '복분열매', d: '화상을 고친다.', price: 40, use: 'cureOne', st: 'brn', icon: '🍓' },
   persim:  { n: '시마열매', d: '혼란을 고친다.', price: 40, use: 'cureOne', st: 'cnf', icon: '🍊' },
-  lum:     { n: '리샘열매', d: '모든 상태이상과 떨어진 능력을 고친다.', price: 150, use: 'cure', icon: '🍈' },
+  lum:     { n: '리샘열매', d: '모든 상태이상과 떨어진 능력을 고친다.', price: 150, use: 'cure', clearDrops: true, icon: '🍈' },
   leppa:   { n: '과사열매', d: '고른 기술 하나의 PP를 10 회복한다.', price: 120, use: 'ppOne', v: 10, icon: '🍐' },
   liechi:  { n: '치리열매', d: '100턴 동안 공격이 1단계 오른다.', price: 100, use: 'stat', st: 2, v: 1, icon: '🔴' },
   ganlon:  { n: '용아열매', d: '100턴 동안 방어가 1단계 오른다.', price: 100, use: 'stat', st: 3, v: 1, icon: '🟠' },
@@ -279,15 +280,15 @@ const HELD_ITEMS = {
   luckyegg:    { n: '행복의알',     d: '얻는 경험치가 1.5배.', price: 2000, icon: '🥚', hold: { expMul: 1.5 } },
   amuletcoin:  { n: '부적금화',     d: '줍는 돈이 1.5배. (리더가 지닐 때만)', price: 2000, icon: '🪙', hold: { moneyMul: 1.5 } },
 };
-// 타입 강화 도구 (해당 타입 기술 1.2배)
+// 타입 강화 도구 (해당 타입 기술 1.2배). TYPE_BOOST_ITEM: 타입 → 도구 (전용 도구 강화 재료)
+const TYPE_BOOST_ITEM = {};
 [['silkscarf', '실크스카프', 1], ['blackbelt', '검은띠', 2], ['sharpbeak', '예리한부리', 3], ['poisonbarb', '독바늘', 4], ['softsand', '부드러운모래', 5],
  ['hardstone', '딱딱한돌', 6], ['silverpowder', '은빛가루', 7], ['spelltag', '저주의부적', 8], ['metalcoat', '금속코트', 9], ['charcoal', '목탄', 10],
  ['mysticwater', '신비의물방울', 11], ['miracleseed', '기적의씨', 12], ['magnet', '자석', 13], ['twistedspoon', '휘어진스푼', 14], ['nevermeltice', '녹지않는얼음', 15],
  ['dragonfang', '용의이빨', 16], ['blackglasses', '검은안경', 17], ['fairyfeather', '요정의깃털', 18]]
-  .forEach(([id, n, t]) => { HELD_ITEMS[id] = { n, d: `${DATA.types[t - 1]} 타입 기술의 위력이 1.2배.`, price: 600, icon: '🔸', hold: { typeMul: { [t]: 1.2 } } }; });
+  .forEach(([id, n, t]) => { TYPE_BOOST_ITEM[t] = id; HELD_ITEMS[id] = { n, d: `${DATA.types[t - 1]} 타입 기술의 위력이 1.2배.`, price: 600, icon: '🔸', hold: { typeMul: { [t]: 1.2 } } }; });
 // 스카프·리본
 Object.assign(HELD_ITEMS, {
-  shinycharm:  { n: '빛나는부적', d: '색이 다른 포켓몬(이로치)을 만날 확률이 2배 (1/80 → 1/40). (리더가 지닐 때만)', price: 1, icon: '💫', hold: { shinyMul: 2 }, special: true },
   friendbow:   { n: '친구리본',   d: '쓰러뜨린 적이 동료가 되고 싶어 할 확률이 1.5배. (리더가 지닐 때만)', price: 2500, icon: '🎀', hold: { recruitMul: 1.5 } },
   healribbon:  { n: '치유리본',   d: '상태이상이 절반의 시간에 낫는다.', price: 900, icon: '💗', hold: { statusShort: true } },
   goldribbon:  { n: '황금리본',   d: '공격·방어·특공·특방·스피드가 모두 1.1배.', price: 4000, icon: '🏅', hold: { atkMul: 1.1, defMul: 1.1, spaMul: 1.1, spdMul: 1.1, speedMul: 1.1 } },
@@ -317,10 +318,92 @@ Object.assign(HELD_ITEMS, {
  ['blueorb', '쪽빛구슬', '🔵', [382], {}, '원시회귀해서 원시가이오가가 된다'],
  ['redorb', '주홍구슬', '🔴', [383], {}, '원시회귀해서 원시그란돈이 된다'],
  ['ultranecroziumz', '울트라네크로Z', '💠', [800], {}, '울트라버스트해서 울트라네크로즈마가 된다'],   // v0.99
+ ['stellarcrystal', '스텔라결정', '🌈', [1024], {}, '스텔라폼이 되고, 등장할 때 날씨와 필드를 모두 없앤다 (제로포밍)'],   // v0.100
 ].forEach(([id, n, icon, only, eff, text]) => {
   const who = only.filter(sp => DATA.species[sp]).map(sp => DATA.species[sp].n).join('·');
   HELD_ITEMS[id] = { n, icon, price: 2000, sig: true, d: `[전용] ${who}에게 지니게 하면 ${text}. 다른 포켓몬에게는 효과가 없다.`, hold: { only, ...eff } };
 });
+// 스타팅 포켓몬 전용 도구 (v0.100, 불가사의 던전의 전용 도구처럼): 그 진화 계열(다른 모습·메가진화 포함)이 지니면 효과
+//  [id, 이름, 아이콘, 진화 계열, 효과, 설명]. 자기 타입 기술 강화 + 계열마다 하나씩 특징
+const STARTER_SIG = [
+  ['bulbpetal', '이상해꽃잎', '🌸', [1, 2, 3], { typeMul: { 12: 1.3 }, regen: 1.5 }, '풀 기술의 위력이 1.3배, 자연 회복이 1.5배'],
+  ['tailflame', '꼬리불꽃부적', '🔥', [4, 5, 6], { typeMul: { 10: 1.3 }, critStage: 1 }, '불꽃 기술의 위력이 1.3배, 급소율이 1단계 오른다'],
+  ['shellshard', '등껍질조각', '🐢', [7, 8, 9], { typeMul: { 11: 1.3 }, defMul: 1.2 }, '물 기술의 위력이 1.3배, 방어가 1.2배'],
+  ['aromaleaf', '향기잎사귀', '🍃', [152, 153, 154], { typeMul: { 12: 1.3 }, statusShort: true }, '풀 기술의 위력이 1.3배, 상태이상이 절반의 시간에 낫는다'],
+  ['backflame', '등불꽃스카프', '🧣', [155, 156, 157], { typeMul: { 10: 1.3 }, speedMul: 1.2 }, '불꽃 기술의 위력이 1.3배, 스피드가 1.2배'],
+  ['bigjaw', '큰턱이빨', '🦷', [158, 159, 160], { typeMul: { 11: 1.3 }, atkMul: 1.2 }, '물 기술의 위력이 1.3배, 공격이 1.2배'],
+  ['forestseed', '숲의씨앗', '🌱', [252, 253, 254], { typeMul: { 12: 1.3 }, speedMul: 1.2 }, '풀 기술의 위력이 1.3배, 스피드가 1.2배'],
+  ['blazefeather', '투지의깃털', '🪶', [255, 256, 257], { typeMul: { 10: 1.2, 2: 1.2 }, atkMul: 1.1 }, '불꽃·격투 기술의 위력이 1.2배, 공격이 1.1배'],
+  ['mudpack', '진흙팩', '🟤', [258, 259, 260], { typeMul: { 11: 1.2, 5: 1.2 }, regen: 2 }, '물·땅 기술의 위력이 1.2배, 자연 회복이 2배'],
+  ['earthsprout', '대지의새싹', '🌿', [387, 388, 389], { typeMul: { 12: 1.2, 5: 1.2 }, defMul: 1.2 }, '풀·땅 기술의 위력이 1.2배, 방어가 1.2배'],
+  ['flamesash', '불꽃머리끈', '🎐', [390, 391, 392], { typeMul: { 10: 1.2, 2: 1.2 }, speedMul: 1.2 }, '불꽃·격투 기술의 위력이 1.2배, 스피드가 1.2배'],
+  ['steelfin', '강철지느러미', '🐧', [393, 394, 395], { typeMul: { 11: 1.2, 9: 1.2 }, spdMul: 1.2 }, '물·강철 기술의 위력이 1.2배, 특수방어가 1.2배'],
+  ['sleekscale', '매끈한비늘', '🐍', [495, 496, 497], { typeMul: { 12: 1.3 }, evaMul: 1.15 }, '풀 기술의 위력이 1.3배, 회피율이 1.15배'],
+  ['emberbell', '콧김방울', '🔔', [498, 499, 500], { typeMul: { 10: 1.2, 2: 1.2 }, defMul: 1.2 }, '불꽃·격투 기술의 위력이 1.2배, 방어가 1.2배'],
+  ['scalchop', '가리비칼', '🐚', [501, 502, 503], { typeMul: { 11: 1.3 }, critStage: 1 }, '물 기술의 위력이 1.3배, 급소율이 1단계 오른다'],
+  ['spikeshell', '가시껍질', '🌰', [650, 651, 652], { typeMul: { 12: 1.3 }, defMul: 1.3 }, '풀 기술의 위력이 1.3배, 방어가 1.3배'],
+  ['magicstick', '마법나뭇가지', '🪄', [653, 654, 655], { typeMul: { 10: 1.2, 14: 1.2 }, spaMul: 1.1 }, '불꽃·에스퍼 기술의 위력이 1.2배, 특수공격이 1.1배'],
+  ['froakiescarf', '물수리검띠', '💧', [656, 657, 658], { typeMul: { 11: 1.2, 17: 1.2 }, speedy: 0.1 }, '물·악 기술의 위력이 1.2배, 행동 후 10% 확률로 한 턴 더 행동한다'],
+  ['featherarrow', '깃털화살', '🏹', [722, 723, 724], { typeMul: { 12: 1.2, 8: 1.2, 2: 1.2 }, critStage: 1 }, '풀·고스트·격투 기술의 위력이 1.2배, 급소율이 1단계 오른다'],
+  ['champbelt', '챔피언벨트', '🥇', [725, 726, 727], { typeMul: { 10: 1.2, 17: 1.2 }, atkMul: 1.1, defMul: 1.1 }, '불꽃·악 기술의 위력이 1.2배, 공격과 방어가 1.1배'],
+  ['bubbleribbon', '물풍선리본', '🎀', [728, 729, 730], { typeMul: { 11: 1.2, 18: 1.2 }, spaMul: 1.1 }, '물·페어리 기술의 위력이 1.2배, 특수공격이 1.1배'],
+  ['rhythmstick', '리듬스틱', '🥁', [810, 811, 812], { typeMul: { 12: 1.3 }, atkMul: 1.2 }, '풀 기술의 위력이 1.3배, 공격이 1.2배'],
+  ['flameball', '불꽃축구공', '⚽', [813, 814, 815], { typeMul: { 10: 1.3 }, speedMul: 1.2 }, '불꽃 기술의 위력이 1.3배, 스피드가 1.2배'],
+  ['tearlens', '눈물렌즈', '💦', [816, 817, 818], { typeMul: { 11: 1.3 }, critStage: 1 }, '물 기술의 위력이 1.3배, 급소율이 1단계 오른다'],
+  ['petalcape', '꽃잎망토', '🌺', [906, 907, 908], { typeMul: { 12: 1.2, 17: 1.2 }, speedMul: 1.2 }, '풀·악 기술의 위력이 1.2배, 스피드가 1.2배'],
+  ['singmic', '노래마이크', '🎤', [909, 910, 911], { typeMul: { 10: 1.2, 8: 1.2 }, spaMul: 1.1 }, '불꽃·고스트 기술의 위력이 1.2배, 특수공격이 1.1배'],
+  ['dancecrest', '춤추는깃', '🦆', [912, 913, 914], { typeMul: { 11: 1.2, 2: 1.2 }, atkMul: 1.1 }, '물·격투 기술의 위력이 1.2배, 공격이 1.1배'],
+];
+// 날씨로 모습이 바뀌는 포켓몬의 전용 도구 (v0.100): fixWx = 날씨와 상관없이 그 날씨일 때의 모습 (체리꼬 포지폼은 플라워기프트도 쾌청일 때처럼)
+const WEATHER_SIG = [
+  ['sunpetal', '햇살꽃잎', '🌞', [420, 421], { fixWx: 'sun', typeMul: { 12: 1.2 } }, '날씨와 상관없이 포지폼이 되고 플라워기프트도 쾌청일 때처럼 발동한다 (체리꼬만). 풀 기술의 위력이 1.2배'],
+  ['heatrock', '뜨거운바위', '🪨', [351], { fixWx: 'sun', typeMul: { 10: 1.2 } }, '날씨와 상관없이 태양의 모습(불꽃 타입)이 되고, 불꽃 기술의 위력이 1.2배'],
+  ['damprock', '축축한바위', '🌧', [351], { fixWx: 'rain', typeMul: { 11: 1.2 } }, '날씨와 상관없이 빗방울의 모습(물 타입)이 되고, 물 기술의 위력이 1.2배'],
+  ['icyrock', '차가운바위', '🧊', [351], { fixWx: 'snow', typeMul: { 15: 1.2 } }, '날씨와 상관없이 설운의 모습(얼음 타입)이 되고, 얼음 기술의 위력이 1.2배'],
+];
+// 인기 포켓몬 전용 도구 (v0.100, 전설·환상 제외). stabMul: 자기 타입 기술 위력 (진화형마다 타입이 다른 이브이 계열 등)
+const POPULAR_SIG = [
+  ['evoribbon', '진화의리본', '🎀', [133, 134, 135, 136, 196, 197, 470, 471, 700], { stabMul: 1.25, speedMul: 1.1 }, '자기 타입 기술의 위력이 1.25배, 스피드가 1.1배'],
+  ['bolttail', '번개꼬리털', '⚡', [172, 25, 26], { typeMul: { 13: 1.3 }, speedMul: 1.2 }, '전기 기술의 위력이 1.3배, 스피드가 1.2배'],
+  ['cozypillow', '푹신한베개', '💤', [446, 143], { typeMul: { 1: 1.2 }, regen: 2, bellyMul: 0.5 }, '노말 기술의 위력이 1.2배, 자연 회복이 2배, 배가 고파지는 속도가 절반 (리더일 때)'],
+  ['auraband', '파동의띠', '🔷', [447, 448], { typeMul: { 2: 1.2, 9: 1.2 }, atkMul: 1.1, spaMul: 1.1 }, '격투·강철 기술의 위력이 1.2배, 공격과 특수공격이 1.1배'],
+  ['dragonplume', '용의깃털', '🐉', [147, 148, 149], { typeMul: { 16: 1.3 }, atkMul: 1.1 }, '드래곤 기술의 위력이 1.3배, 공격이 1.1배'],
+  ['ragescale', '분노의비늘', '🌊', [129, 130], { typeMul: { 11: 1.2, 16: 1.2 }, atkMul: 1.2 }, '물·드래곤 기술의 위력이 1.2배, 공격이 1.2배'],
+  ['shadowcharm', '그림자부적', '👻', [92, 93, 94], { typeMul: { 8: 1.3 }, evaMul: 1.1 }, '고스트 기술의 위력이 1.3배, 회피율이 1.1배'],
+  ['sandarmor', '모래갑옷', '🪨', [246, 247, 248], { typeMul: { 6: 1.2, 17: 1.2 }, defMul: 1.2 }, '바위·악 기술의 위력이 1.2배, 방어가 1.2배'],
+  ['dreamwing', '꿈의날개', '🪽', [371, 372, 373], { typeMul: { 16: 1.2, 3: 1.2 }, speedMul: 1.1, atkMul: 1.1 }, '드래곤·비행 기술의 위력이 1.2배, 공격과 스피드가 1.1배'],
+  ['steelbrain', '강철두뇌', '🧠', [374, 375, 376], { typeMul: { 9: 1.2, 14: 1.2 }, defMul: 1.2 }, '강철·에스퍼 기술의 위력이 1.2배, 방어가 1.2배'],
+  ['sharkfin', '상어지느러미', '🦈', [443, 444, 445], { typeMul: { 16: 1.2, 5: 1.2 }, speedMul: 1.2 }, '드래곤·땅 기술의 위력이 1.2배, 스피드가 1.2배'],
+  ['guardbrooch', '수호의브로치', '💚', [280, 281, 282, 475], { typeMul: { 14: 1.2, 18: 1.2, 2: 1.2 }, spdMul: 1.2 }, '에스퍼·페어리·격투 기술의 위력이 1.2배, 특수방어가 1.2배'],
+  ['dewslime', '촉촉한점액', '💜', [704, 705, 706], { typeMul: { 16: 1.3 }, spdMul: 1.2 }, '드래곤 기술의 위력이 1.3배, 특수방어가 1.2배'],
+  ['duskmane', '황혼의갈기', '🐺', [744, 745], { typeMul: { 6: 1.3 }, critStage: 1 }, '바위 기술의 위력이 1.3배, 급소율이 1단계 오른다'],
+  ['raggedcloth', '낡은천', '🎭', [778], { typeMul: { 8: 1.2, 18: 1.2 }, evaMul: 1.15 }, '고스트·페어리 기술의 위력이 1.2배, 회피율이 1.15배'],
+  ['dreepylauncher', '드라꼬발사대', '🚀', [885, 886, 887], { typeMul: { 16: 1.2, 8: 1.2 }, speedMul: 1.2 }, '드래곤·고스트 기술의 위력이 1.2배, 스피드가 1.2배'],
+  ['lullabyribbon', '자장가리본', '🎶', [174, 39, 40], { typeMul: { 1: 1.2, 18: 1.2 }, regen: 1.5 }, '노말·페어리 기술의 위력이 1.2배, 자연 회복이 1.5배'],
+  ['headachepill', '두통약', '💊', [54, 55], { typeMul: { 11: 1.2, 14: 1.2 }, spaMul: 1.1 }, '물·에스퍼 기술의 위력이 1.2배, 특수공격이 1.1배'],
+  ['coinnecklace', '금화목걸이', '🪙', [52, 53], { typeMul: { 1: 1.2 }, critStage: 1, moneyMul: 1.5 }, '노말 기술의 위력이 1.2배, 급소율이 1단계 오르고, 줍는 돈이 1.5배 (리더일 때)'],
+  ['magnetscrew', '자력나사', '🔩', [81, 82, 462], { typeMul: { 13: 1.2, 9: 1.2 }, spaMul: 1.1 }, '전기·강철 기술의 위력이 1.2배, 특수공격이 1.1배'],
+  ['legendmane', '전설의갈기', '🦁', [58, 59], { typeMul: { 10: 1.3 }, speedMul: 1.2 }, '불꽃 기술의 위력이 1.3배, 스피드가 1.2배'],
+  ['seasong', '바다의노래', '🎵', [131], { typeMul: { 11: 1.2, 15: 1.2 }, spdMul: 1.2 }, '물·얼음 기술의 위력이 1.2배, 특수방어가 1.2배'],
+  ['steelscythe', '강철낫', '🗡', [123, 212, 900], { typeMul: { 7: 1.3 }, critStage: 1 }, '벌레 기술의 위력이 1.3배, 급소율이 1단계 오른다'],
+  ['hornpin', '뿔장식', '🪲', [214], { typeMul: { 7: 1.2, 2: 1.2 }, atkMul: 1.1 }, '벌레·격투 기술의 위력이 1.2배, 공격이 1.1배'],
+  ['bubbletail', '물방울꼬리', '🫧', [298, 183, 184], { typeMul: { 11: 1.2, 18: 1.2 }, atkMul: 1.2 }, '물·페어리 기술의 위력이 1.2배, 공격이 1.2배'],
+  ['luckshell', '행운의알껍질', '🥚', [175, 176, 468], { typeMul: { 18: 1.3 }, statusShort: true }, '페어리 기술의 위력이 1.3배, 상태이상이 절반의 시간에 낫는다'],
+  ['disasterhorn', '재앙의뿔', '🌙', [359], { typeMul: { 17: 1.3 }, critStage: 1 }, '악 기술의 위력이 1.3배, 급소율이 1단계 오른다'],
+  ['steeljoint', '강철마디', '⛓', [95, 208], { typeMul: { 6: 1.2, 9: 1.2 }, defMul: 1.3 }, '바위·강철 기술의 위력이 1.2배, 방어가 1.3배'],
+  ['illusionfur', '환영의털', '🦊', [570, 571], { typeMul: { 17: 1.3 }, evaMul: 1.15 }, '악 기술의 위력이 1.3배, 회피율이 1.15배'],
+  ['ghostcandle', '도깨비촛불', '🕯', [607, 608, 609], { typeMul: { 8: 1.2, 10: 1.2 }, spaMul: 1.1 }, '고스트·불꽃 기술의 위력이 1.2배, 특수공격이 1.1배'],
+  ['steelquill', '강철깃', '🐦', [821, 822, 823], { typeMul: { 3: 1.2, 9: 1.2 }, defMul: 1.2 }, '비행·강철 기술의 위력이 1.2배, 방어가 1.2배'],
+  ['cloudcotton', '구름솜', '☁', [333, 334], { typeMul: { 3: 1.2, 16: 1.2 }, spdMul: 1.2 }, '비행·드래곤 기술의 위력이 1.2배, 특수방어가 1.2배'],
+  ['flowercrown', '꽃화관', '💐', [669, 670, 671], { typeMul: { 18: 1.3 }, spdMul: 1.2 }, '페어리 기술의 위력이 1.3배, 특수방어가 1.2배'],
+  ['joyribbon', '행복의리본', '💗', [440, 113, 242], { typeMul: { 1: 1.2 }, regen: 2, spdMul: 1.2 }, '노말 기술의 위력이 1.2배, 자연 회복이 2배, 특수방어가 1.2배'],
+];
+for (const [id, n, icon, fam, eff, text] of [...STARTER_SIG, ...WEATHER_SIG, ...POPULAR_SIG]) {
+  const base = fam.filter(sp => DATA.species[sp]);
+  const only = [...base, ...Object.keys(DATA.species).map(Number).filter(k => DATA.species[k].f && base.includes(DATA.species[k].f[0]))];   // 리전폼·메가진화 등도
+  const who = base.map(sp => DATA.species[sp].n).join('·');
+  HELD_ITEMS[id] = { n, icon, price: 2000, sig: true, tradeOnly: true, who, d: `[전용] ${who}에게 지니게 하면 ${text}. 다른 포켓몬에게는 효과가 없다.`, hold: { only, ...eff } };
+}
 // 지닌 물건은 오래 쓰는 물건이라 비싸게 (위 가격의 HELD_PRICE_MUL배)
 const HELD_PRICE_MUL = 2;
 for (const [id, it] of Object.entries(HELD_ITEMS)) ITEMS[id] = { ...it, price: it.price * HELD_PRICE_MUL, use: 'none', held: true };
@@ -331,8 +414,11 @@ const heldBlockReason = (ability, id) => ITEMS[id]?.hold?.helmet && typeof ABIL 
 const heldOf = c => {
   const h = c && c.held && ITEMS[c.held] && ITEMS[c.held].hold;
   if (!h || (h.only && !h.only.includes(c.sp))) return {};
-  return h;
+  const lv = h.only && !c.enemy ? sigLv(c.held) : 0;   // 전용 도구 강화: 탐험대만 (적이 지닌 것은 그대로)
+  return lv ? sigHoldAt(c.held, lv) : h;
 };
+// 이 포켓몬에게 적용되는 날씨: 날씨 고정 전용 도구(뜨거운바위·햇살꽃잎 등)를 지니면 그 날씨 (모습·특성만, 층의 날씨는 그대로)
+const wxFor = c => heldOf(c).fixWx || weatherNow();
 
 const SHOP_POOL = ['oran', 'oran', 'sitrus', 'apple', 'apple', 'bigapple', 'heal', 'elixir', 'reviver', 'blast', 'sleep', 'warp', 'stun', 'thorn', 'gravel', 'escape', 'lumi', 'foesleep', 'stone', 'link',
   'superpotion', 'fullrestore', 'xattack', 'xdefense', 'xspatk', 'xspeed', 'xaccuracy', 'poisonseed', 'confuseseed', 'goldthorn', 'radar', 'trapbust', 'paraorb', 'sloworb',
@@ -340,11 +426,15 @@ const SHOP_POOL = ['oran', 'oran', 'sitrus', 'apple', 'apple', 'bigapple', 'heal
 // 마을 상점은 매일 지닌 물건 몇 개도 진열한다 (전용 도구는 따로 가끔)
 const HELD_SHOP_POOL = Object.keys(HELD_ITEMS).filter(id => !HELD_ITEMS[id].sig && !HELD_ITEMS[id].special);   // special: 업적 보상·전용 진열만 (빛나는부적)
 const SIG_ITEMS = Object.keys(HELD_ITEMS).filter(id => HELD_ITEMS[id].sig);
+// 던전·상점에서 나오는 전용 도구 (v0.100의 스타팅·날씨 전용 도구 tradeOnly는 삐딱구리 트레이드에서만)
+const SIG_FIELD_ITEMS = SIG_ITEMS.filter(id => !HELD_ITEMS[id].tradeOnly);
+// 삐딱구리 트레이드 목록: 전설·환상 포켓몬의 전용 도구는 빼고
+const SIG_TRADE_ITEMS = SIG_ITEMS.filter(id => !HELD_ITEMS[id].hold.only.some(sp => DATA.species[sp] && DATA.species[sp].lg));
 const SIG_SHOP_CHANCE = 0.08;   // 마을 상점에 전용 도구가 하나 진열될 확률 (하루)
 // 전용 도구는 그 포켓몬이 나오는 던전에서만 드물게 떨어진다
 const SIG_DROP = { floor: 0.03, defeat: 0.03, boss: 0.25 };
 // 이 포켓몬들 중 누군가가 주인인 전용 도구
-const sigItemsFor = sps => SIG_ITEMS.filter(id => HELD_ITEMS[id].hold.only.some(sp => sps.includes(sp)));
+const sigItemsFor = sps => SIG_FIELD_ITEMS.filter(id => HELD_ITEMS[id].hold.only.some(sp => sps.includes(sp)));
 // 한 층에 떨어져 있는 아이템 수, 쓰러뜨린 적이 아이템을 떨어뜨릴 확률
 const ITEMS_PER_FLOOR = [2, 4];
 const ENEMY_DROP_CHANCE = 0.05;
@@ -637,6 +727,40 @@ const EXTREME_WX = ['hsun', 'hrain', 'wind'];
 const WX_BLOCK = { hsun: 11, hrain: 10 };   // 그 날씨에서 실패하는 공격 기술 타입
 const wxBase = w => (w && WEATHERS[w] && WEATHERS[w].base) || w;
 let CUR_WEATHER = null;
+// ── 필드 (v0.100): 그래스필드·미스트필드·일렉트릭필드·사이코필드. TERRAIN_TURNS턴 동안 (층을 옮기거나 다른 필드가 깔리면 끝난다)
+//  땅에 있는 포켓몬(비행 타입·부유 특성이 아닌)에게만 효과
+const TERRAINS = {
+  grassy:   { n: '그래스필드',   icon: '🌿', type: 12, d: '땅에 있는 포켓몬은 8턴마다 최대 HP의 1/16을 회복하고, 풀 기술의 위력이 1.3배. 지진·땅고르기·매그니튜드에 받는 데미지 절반.' },
+  misty:    { n: '미스트필드',   icon: '🌸', type: 18, d: '땅에 있는 포켓몬은 상태이상·혼란에 걸리지 않고, 드래곤 기술에 받는 데미지가 절반.' },
+  electric: { n: '일렉트릭필드', icon: '⚡', type: 13, d: '땅에 있는 포켓몬은 잠들지 않고, 전기 기술의 위력이 1.3배.' },
+  psychic:  { n: '사이코필드',   icon: '🔮', type: 14, d: '땅에 있는 포켓몬은 선제기(전광석화 등)를 맞지 않고, 에스퍼 기술의 위력이 1.3배.' },
+};
+let CUR_TERRAIN = null;
+// ── 물·용암 웅덩이 (v0.100, 원작 던전처럼): 맵 타일 2 = 물, 3 = 용암. 벽 자리를 대신해 생겨서 길을 막지 않는다
+//  들어갈 수 있는 포켓몬: 물은 물 타입, 용암은 불꽃 타입, 비행 타입·부유 특성은 둘 다. 자동 탐색은 웅덩이를 지나는 길로 가지 않는다
+const LIQUIDS = { 2: { id: 'water', n: '물', types: [11], icon: '💧' }, 3: { id: 'lava', n: '용암', types: [10], icon: '🔥' } };
+const LIQUID_LAVA_DG = new Set(['volcano', 'magma']);   // 용암 던전 (원작 타일셋의 두 번째 지형이 용암)
+const LIQUID_NONE_DG = new Set(['sky', 'ultra', 'mega', 'summit', 'twilight', 'coronet', 'crescent']);   // 웅덩이 없음 (탑·하늘·허공 지형)
+// 던전 테마별 웅덩이 (v0.100): chance 층마다 생길 확률 / small 방·복도 둘레 웅덩이 수 / smallSize 하나의 칸 수 / lakes 벽 속 큰 호수 수(0이면 없는 층도) / lakeSize
+const LIQUID_THEMES = {
+  sea:    { chance: 0.95, small: [8, 16],  smallSize: [3, 14], lakes: [1, 3], lakeSize: [40, 120] },   // 바다·물가: 큰 호수가 많다
+  marsh:  { chance: 0.9,  small: [12, 20], smallSize: [3, 12], lakes: [1, 2], lakeSize: [30, 80] },    // 늪
+  field:  { chance: 0.7,  small: [6, 12],  smallSize: [3, 10], lakes: [0, 2], lakeSize: [25, 70] },    // 숲·들판·협곡 (기본)
+  lava:   { chance: 0.8,  small: [6, 12],  smallSize: [3, 10], lakes: [0, 2], lakeSize: [20, 60] },    // 화산
+  cave:   { chance: 0.6,  small: [4, 10],  smallSize: [2, 8],  lakes: [0, 1], lakeSize: [20, 45] },    // 동굴·유적·탑: 작은 웅덩이 위주, 호수는 드물게
+  ice:    { chance: 0.5,  small: [4, 8],   smallSize: [2, 8],  lakes: [0, 1], lakeSize: [20, 40] },    // 설산
+  desert: { chance: 0.4,  small: [2, 6],   smallSize: [2, 6],  lakes: [0, 1], lakeSize: [15, 30] },    // 사막: 가끔 오아시스
+};
+const LIQUID_THEME_OF = {
+  beach: 'sea', storm: 'sea', whirl: 'sea', seafloor: 'sea', watercity: 'sea', seatemple: 'sea',
+  swamp: 'marsh', volcano: 'lava', magma: 'lava', desert: 'desert', frost: 'ice', crown: 'ice',
+  crystal: 'cave', mine: 'cave', trial: 'cave', mystery: 'cave', eternal: 'cave', ruins: 'cave', spiral: 'cave', zerodeep: 'cave', meteor: 'cave',
+  factory: 'cave', crystaldeep: 'cave', genelab: 'cave', burned: 'cave', twofist: 'cave',
+};
+const liquidTheme = dg => LIQUID_THEMES[LIQUID_THEME_OF[dg && dg.id] || 'field'];
+const liquidTileOf = dg => (!dg || LIQUID_NONE_DG.has(dg.id) ? 0 : LIQUID_LAVA_DG.has(dg.id) ? 3 : 2);
+const canCross = (c, tile) => !!c && (c.types.includes(3) || (typeof abilityOf === 'function' && abilityOf(c).levitate) || LIQUIDS[tile].types.some(t => c.types.includes(t)));
+const TERRAIN_TURNS = 30;   // 필드가 이어지는 턴 (기술·특성 모두, 다시 깔면 처음부터)
 function rollWeather(dg) {
   let r = Math.random();
   for (const [w, p] of dg.wx || []) { if ((r -= p) < 0) return w; }
@@ -745,6 +869,11 @@ function evoFamily(sp) {
 // 던전 컨셉·추가 목록에 든 전설(코스모그·코스모움·타입:널)이 그 층의 적 후보로 남을 확률 (뽑힌 뒤 이 확률로만 남긴다)
 const LEGEND_CONCEPT_RATE = 0.2;
 const SHINY_CHANCE = 1 / 80;
+// 빛나는부적 (v0.100~): 도감 완성 업적을 이루면 지니지 않아도 늘 이로치 확률 2배. 예전에 상점에서 산 부적은 이 값으로 돌려준다
+const SHINY_CHARM_MUL = 2, SHINY_CHARM_PRICE = 50000;
+const hasShinyCharm = s => !!(s && s.ach && s.ach.dexAll);
+// 보스가 부하 없이 혼자, 레벨 보정(+3) 없이 나오는 던전 (첫 던전: 작은 숲, 하드 제외)
+const BOSS_SOLO = new Set(['forest']);
 // 바람: 한 층에 오래 머물면 경고 후 던전 밖으로 날려간다 (쓰러진 것과 같은 패널티)
 const WIND = { warn: [700, 850, 950], limit: 1000 };
 // 보스: 일반 던전은 마지막 층, 로그라이크는 10층마다와 마지막 층
@@ -811,7 +940,7 @@ const dexKey = id => { const f = formOf(id); return f ? f[0] + (+f[1]) / 100 : +
 const byDex = (a, b) => dexKey(a) - dexKey(b);
 // SpriteCollab 폴더: 0026/ (이로치 0026/0000/0001/), 리전폼 0026/0001/ (이로치 0026/0001/0001/)
 // 던전 그림이 없어 진화 전 포켓몬의 그림을 빌려 쓰는 포켓몬 안내 (species.sb)
-const borrowNote = id => { const b = DATA.species[id]?.sb; return b ? `🖼 아직 ${spName(id)}의 던전 그림이 없어서, 던전에서는 진화 전 모습인 ${spName(b)}의 그림으로 보여요. 종족값·타입·특성·기술은 ${spName(id)}의 것이 그대로 적용돼요. (초상화는 ${spName(id)}의 것)` : ''; };
+const borrowNote = id => { const b = DATA.species[id]?.sb, rel = b && DATA.species[b]?.f?.[0] === DATA.species[id]?.f?.[0] ? '다른 모습인' : '진화 전 모습인'; return b ? `🖼 아직 ${spName(id)}의 던전 그림이 없어서, 던전에서는 ${rel} ${spName(b)}의 그림으로 보여요. 종족값·타입·특성·기술은 ${spName(id)}의 것이 그대로 적용돼요. (초상화는 ${spName(id)}의 것)` : ''; };
 const spritePath = (id, shiny) => { const f = formOf(id); return f ? `${pad4(f[0])}/${f[1]}/${shiny ? '0001/' : ''}` : `${pad4(id)}/${shiny ? '0000/0001/' : ''}`; };
 const spName = id => DATA.species[id]?.n || ('#' + id);
 // 폼체인지·메가진화 모습(species.fc)은 따로 나오는 포켓몬이 아니다: 목록을 돌 때는 원래 포켓몬만 (js/forms.js)
@@ -846,7 +975,8 @@ const TM_IDS = [];
 // 원본 기술머신 + 새로 넣은 변화 기술의 기술머신 (js/extramoves.js)
 // 되살린 기술의 기술머신은 맨 뒤에 (js/oldmoves.js, 원래 번호가 바뀌지 않게)
 const TM_MOVES = [...DATA.tms, ...Object.keys(typeof EXTRA_TM !== 'undefined' ? EXTRA_TM : {}).map(Number).filter(m => !DATA.tms.includes(m)),
-  ...Object.keys(typeof OLD_TM !== 'undefined' ? OLD_TM : {}).map(Number).filter(m => !DATA.tms.includes(m))];
+  ...Object.keys(typeof OLD_TM !== 'undefined' ? OLD_TM : {}).map(Number).filter(m => !DATA.tms.includes(m)),
+  ...Object.keys(typeof TERRAIN_TM !== 'undefined' ? TERRAIN_TM : {}).map(Number).filter(m => !DATA.tms.includes(m))];   // 필드 기술 (v0.100, js/terrainmoves.js)
 TM_MOVES.forEach((mid, i) => {
   const m = DATA.moves[mid], id = 'tm' + mid;
   ITEMS[id] = {
@@ -861,7 +991,6 @@ TM_MOVES.forEach((mid, i) => {
 // (지닌 물건 배율을 곱한 뒤 기준, 파는 값도 따라 오른다)
 const CHEAP_LIMIT = 3000, CHEAP_MUL = 2, PRICEY_MUL = 1.5;
 for (const it of Object.values(ITEMS)) if (it.price > 0) it.price = Math.round(it.price * (it.price <= CHEAP_LIMIT ? CHEAP_MUL : PRICEY_MUL) / 10) * 10;
-ITEMS.shinycharm.price = 50000;   // 빛나는부적: 도감 완성 업적 뒤 상점에서 (가격 올리기와 따로)
 ITEMS.masterbook.price = 10000;   // 숙련맥스: 마을 상점 ₽10000 고정 (가격 올리기와 따로, v0.98)
 // 상점에 늘 있는 기본 물건은 값을 따로 더 올린다 (오랭열매·사과·과사열매 2배), 탈출구슬은 비싸게
 for (const id of ['oran', 'apple', 'leppa']) ITEMS[id].price *= 2;
@@ -893,8 +1022,65 @@ for (const id of ['oran', 'apple', 'leppa']) { const it = ITEMS[id]; it.sellAt =
 // 상점에 늘 있는 물건 (맨 위에 고정). 나머지 진열은 날마다 바뀐다
 const SHOP_FIXED = ['oran', 'apple', 'leppa', 'stone', 'link', 'masterbook'];   // 숙련맥스 (v0.98): 새로 키울 때 숙련도 올리는 수고를 덜도록
 // 업적을 달성하면 늘 진열되는 물건: 물건 → 업적 id (빛나는부적: 도감 완성. 처음 한 번은 업적 보상으로 받고, 잃어버리면 여기서 산다)
-const SHOP_UNLOCK = { shinycharm: 'dexAll' };
+const SHOP_UNLOCK = {};   // 업적을 이루면 상점에 늘 진열되는 물건 (v0.100: 빛나는부적은 늘 적용으로 바뀌어 빠짐)
 const shopFixedFor = s => [...SHOP_FIXED, ...Object.keys(SHOP_UNLOCK).filter(id => s && s.ach && s.ach[SHOP_UNLOCK[id]])];
+
+// ── 얼루기 교환소 (v0.100): 쓰지 않는 도구 JUNK_PER_TICKET개 → 티켓 1장. 티켓으로 좋은 물건과 바꾸거나 뽑기를 한다 ──
+const JUNK_PER_TICKET = 10;
+// 잡동사니: 던전에서 주운 보통 도구 (기술머신·지닌 물건·메가스톤·영양제·구미·겹치는 물건과 아래 귀한 물건은 빼고)
+const JUNK_EXCLUDE = new Set(['quest', 'candy', 'stone', 'link', 'abcapsule', 'abpatch', 'eggtm', 'masterbook']);
+const isJunk = id => { const it = ITEMS[id]; return !!it && !it.tm && !it.held && !it.mega && !it.sig && !it.vit && !it.gummy && !it.stack && !it.formTo && !JUNK_EXCLUDE.has(id); };
+// 티켓 교환: [물건, 티켓 장수]
+const TICKET_TRADES = [['reviver', 3], ['fullrestore', 2], ['abcapsule', 6], ['candy', 6],
+  ...Object.keys(VITAMINS).map(id => [id, 6]), ['eggtm', 6], ['abpatch', 8], ['masterbook', 8],
+  ...Object.keys(GUMMIES).filter(id => id !== 'rainbowgummy').map(id => [id, 8]), ['rainbowgummy', 30]];
+const GACHA_BONUS = { 10: 1 };   // 10번 뽑기: 1번 더 (티켓 10장으로 11개)
+// 뽑기 (티켓 1장): [가중치, 물건 후보]. 가중치 합 1000 = 확률 ‰
+const GACHA_TABLE = [
+  [460, ['reviver', 'fullrestore', 'elixir', 'bigapple', 'lum', 'sitrus', 'escape', 'foesleep']],
+  [150, Object.keys(VITAMINS)],
+  [100, ['candy']],
+  [70, ['abcapsule']],   // 특성캡슐·기술머신·교배기술머신은 같은 등급 (각 7%)
+  [70, ['@tm']],   // 아무 기술머신 하나 (v0.100: 숙련맥스 대신)
+  [70, ['eggtm']],
+  [30, Object.keys(GUMMIES).filter(id => id !== 'rainbowgummy')],   // 단색 구미·특성패치는 같은 등급 (각 3%)
+  [30, ['abpatch']],
+  [10, ['rainbowgummy']],   // 가장 드문 것도 1%
+  [10, ['@mega']],   // 아무 메가스톤 하나
+];
+const GACHA_RARE = 30;   // 이 가중치 이하(3% 이하)가 나오면 팡파르
+const SIG_TICKETS = 50;   // 삐딱구리 트레이드: 전용 도구 하나에 티켓 장수 (v0.100: 6 → 50)
+// ── 전용 도구 강화 (v0.100): 도구 종류마다 계정에 +1 ~ +SIG_UP_MAX (save.sigLv). 지닌 탐험대에게만 적용 ──
+//  단계마다 모든 배율 +SIG_UP_STEP (타입 위력·능력치·회피 등), 자연 회복 +0.25, 한 턴 더 +2%p, 최대 단계면 급소율 +1
+//  재료 (n = 올라갈 단계): 티켓 2n장 + 그 도구 타입의 타입 강화 도구(목탄·신비의물방울 등) n개 + ₽5000n
+const SIG_UP_MAX = 3, SIG_UP_STEP = 0.05;
+const SIG_UP_MULS = ['stabMul', 'atkMul', 'defMul', 'spaMul', 'spdMul', 'speedMul', 'evaMul', 'accMul', 'physMul', 'specMul'];
+const sigUpgradable = id => SIG_TRADE_ITEMS.includes(id);
+const sigLv = id => (sigUpgradable(id) && typeof Game !== 'undefined' && Game.save && Game.save.sigLv && Math.min(SIG_UP_MAX, Game.save.sigLv[id] || 0)) || 0;
+// 도구의 타입 순서: 주인 포켓몬의 타입을 앞에 (진흙팩은 물 → 땅). 재료는 맨 앞 타입의 타입 강화 도구
+const sigTypes = id => { const h = HELD_ITEMS[id].hold, own = DATA.species[h.only[0]].t; return Object.keys(h.typeMul || {}).map(Number).sort((a, b) => (own.includes(b) - own.includes(a)) || own.indexOf(a) - own.indexOf(b)); };
+const sigMatType = id => sigTypes(id)[0] || DATA.species[HELD_ITEMS[id].hold.only[0]].t[0];
+const sigUpCost = (id, to) => ({ tickets: 2 * to, item: TYPE_BOOST_ITEM[sigMatType(id)], n: to, money: 5000 * to });
+const sigHoldCache = {};
+function sigHoldAt(id, lv) {
+  const k = id + '+' + lv;
+  if (sigHoldCache[k]) return sigHoldCache[k];
+  const u = { ...HELD_ITEMS[id].hold }, add = v => +(v + SIG_UP_STEP * lv).toFixed(2);
+  for (const m of SIG_UP_MULS) if (u[m]) u[m] = add(u[m]);
+  if (u.typeMul) u.typeMul = Object.fromEntries(Object.entries(u.typeMul).map(([ty, v]) => [ty, add(v)]));
+  if (u.regen) u.regen += 0.25 * lv;
+  if (u.speedy) u.speedy = +(u.speedy + 0.02 * lv).toFixed(2);
+  if (u.critStage && lv >= SIG_UP_MAX) u.critStage += 1;
+  return (sigHoldCache[k] = u);
+}
+// 강화한 효과를 글로 (교환 탭)
+function sigUpText(id, lv) {
+  const h = sigHoldAt(id, lv), N = { stabMul: '자기 타입 기술', atkMul: '공격', defMul: '방어', spaMul: '특수공격', spdMul: '특수방어', speedMul: '스피드', evaMul: '회피율', accMul: '명중률', physMul: '물리 위력', specMul: '특수 위력' };
+  return [...(h.typeMul ? [`${sigTypes(id).map(ty => typeName(ty)).join('·')} 기술 ${Object.values(h.typeMul)[0]}배`] : []),
+    ...SIG_UP_MULS.filter(m => h[m]).map(m => `${N[m]} ${h[m]}배`), ...(h.regen ? [`자연 회복 ${h.regen}배`] : []),
+    ...(h.speedy ? [`한 턴 더 ${Math.round(h.speedy * 100)}%`] : []), ...(h.critStage ? [`급소율 +${h.critStage}단계`] : [])].join(' · ');
+}
+const TICKET_PRICE = 3000;   // 티켓을 돈으로 살 때 한 장 값
 
 // ── 아이템 등급 (상점 가격·보상 분류용. 바닥 드롭은 위의 단계별 표 DROP_STAGES) ──
 // 1 흔함 (처음부터) · 2 조금 드묾 · 3 드묾 · 4 아주 드묾
@@ -1012,6 +1198,7 @@ function canLearnTM1(sp, mid) {
   if (typeof CHAMP_TM !== 'undefined' && CHAMP_TM[sp] && CHAMP_TM[sp].includes(mid)) return true;   // 포켓몬 챔피언스 기준으로 더한 기술 (js/champmoves.js)
   if (typeof EXTRA_TM !== 'undefined' && EXTRA_TM[mid] && !DATA.tms.includes(mid)) return EXTRA_TM[mid].includes(+sp);
   if (typeof OLD_TM !== 'undefined' && OLD_TM[mid] && !DATA.tms.includes(mid)) return OLD_TM[mid].includes(+sp);
+  if (typeof TERRAIN_TM !== 'undefined' && TERRAIN_TM[mid]) return TERRAIN_TM[mid].includes(+sp);
   const i = DATA.tms.indexOf(mid);
   if (i < 0) return false;
   if (!(sp in tmBits)) tmBits[sp] = BigInt('0x' + (DATA.species[sp].tm || '0'));

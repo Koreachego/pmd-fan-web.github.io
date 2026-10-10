@@ -22,7 +22,7 @@ const FORM_ITEMS = {
   griseousorb: 'giratina-origin', adamantorb: 'dialga-origin', lustrousorb: 'palkia-origin',
   rustedsword: 'zacian-crowned', rustedshield: 'zamazenta-crowned',
   wellspringmask: 'ogerpon-wellspring-mask', hearthflamemask: 'ogerpon-hearthflame-mask', cornerstonemask: 'ogerpon-cornerstone-mask',
-  blueorb: 'kyogre-primal', redorb: 'groudon-primal', ultranecroziumz: 'necrozma-ultra',
+  blueorb: 'kyogre-primal', redorb: 'groudon-primal', ultranecroziumz: 'necrozma-ultra', stellarcrystal: 'terapagos-stellar',
 };
 for (const [item, fi] of Object.entries(FORM_ITEMS)) if (ITEMS[item] && FORM_ID[fi]) ITEMS[item].formTo = FORM_ID[fi];
 
@@ -58,9 +58,9 @@ for (const [fi, fid] of Object.entries(FORM_ID)) {
 // ── 전투 중 바뀌는 모습: 원래 포켓몬 번호 → 지금 되어야 할 모습의 포켓API 이름 (없으면 원래 모습) ──
 const hpRate = c => c.hp / c.maxhp;
 const BATTLE_FORMS = {
-  351: c => ({ sun: 'castform-sunny', rain: 'castform-rainy', snow: 'castform-snowy' })[weatherNow()],   // 캐스퐁: 날씨
+  351: c => ({ sun: 'castform-sunny', rain: 'castform-rainy', snow: 'castform-snowy' })[wxFor(c)],   // 캐스퐁: 날씨 (뜨거운바위 등을 지니면 그 날씨로 고정)
   778: c => (c.disguiseBroken ? 'mimikyu-busted' : null),                           // 따라큐: 탈이 벗겨지면 (층마다 다시, v0.99)
-  421: c => (weatherNow() === 'sun' ? 'cherrim-sunshine' : null),                   // 체리꼬: 쾌청이면 포지폼 (v0.99)
+  421: c => (wxFor(c) === 'sun' ? 'cherrim-sunshine' : null),                       // 체리꼬: 쾌청이면 포지폼 (v0.99, 햇살꽃잎을 지니면 늘)
   681: c => (c.blade ? 'aegislash-blade' : null),                                    // 킬가르도: 공격 기술을 쓰면 블레이드폼, 변화 기술·대기면 실드폼
   555: c => (hpRate(c) <= 0.5 ? 'darmanitan-zen' : null),                            // 불비달마: HP 절반 이하
   746: c => (c.lv >= 20 && hpRate(c) > 0.25 ? 'wishiwashi-school' : null),          // 약어리: Lv20 이상, HP 1/4 초과

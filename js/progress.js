@@ -61,7 +61,7 @@ const Progress = (() => {
     { id: 'seen100',  icon: '📖', n: '도감 채우기',     d: '포켓몬을 100종 만난다.', prog: () => [dexCounts().seen, 100], reward: { money: 1000 } },
     { id: 'seen300',  icon: '📖', n: '포켓몬 박사',     d: '포켓몬을 300종 만난다.', prog: () => [dexCounts().seen, 300], reward: { money: 5000, item: 'protein' } },
     { id: 'seen600',  icon: '📚', n: '살아있는 도감',   d: '포켓몬을 600종 만난다.', prog: () => [dexCounts().seen, 600], reward: { money: 20000, item: 'calcium' } },
-    { id: 'dexAll',   icon: '💫', n: '도감 완성',       d: '모든 포켓몬을 만난다. (빛나는부적은 그 뒤 상점에서도 살 수 있다)', prog: () => [dexCounts().seen, dexCounts().total], reward: { item: 'shinycharm' } },
+    { id: 'dexAll',   icon: '💫', n: '도감 완성',       d: '모든 포켓몬을 만난다. 빛나는부적: 그 뒤로 이로치를 만날 확률이 늘 2배 (지니지 않아도)', prog: () => [dexCounts().seen, dexCounts().total], reward: { text: '💫빛나는부적 (늘 적용)' } },
     { id: 'beat100',  icon: '🥊', n: '다양한 상대',     d: '서로 다른 포켓몬을 100종 쓰러뜨린다.', prog: () => [dexCounts().beaten, 100], reward: { money: 2000 } },
     { id: 'roster5',  icon: '👥', n: '첫 동료들',       d: '캐릭터 목록의 포켓몬이 5종류가 된다. (영입)', prog: () => [Object.keys(S().roster).length, 5], reward: { money: 500, item: 'abcapsule' } },
     { id: 'roster20', icon: '👥', n: '대가족',          d: '캐릭터 목록의 포켓몬이 20종류가 된다. (영입)', prog: () => [Object.keys(S().roster).length, 20], reward: { money: 3000, item: 'iron' } },
@@ -78,7 +78,7 @@ const Progress = (() => {
     { id: 'vitamin',  icon: '🥤', n: '튼튼하게',        d: '영양제로 한 능력치를 최대까지 강화한다.', prog: () => [maxBoost(), VITAMIN_MAX], reward: { money: 3000 } },
     { id: 'rich',     icon: '💰', n: '부자',            d: '돈을 50000 포켓 모은다.', prog: () => [S().money, 50000], reward: { item: 'amuletcoin' } },
   ];
-  const rewardText = r => [r.money ? `₽${r.money}` : '', r.item ? `${ITEMS[r.item].icon}${ITEMS[r.item].n}` : ''].filter(Boolean).join(' + ');
+  const rewardText = r => [r.money ? `₽${r.money}` : '', r.item ? `${ITEMS[r.item].icon}${ITEMS[r.item].n}` : '', r.text || ''].filter(Boolean).join(' + ');
 
   // 새로 달성한 업적을 찾아 보상을 주고 알린다
   function check() {

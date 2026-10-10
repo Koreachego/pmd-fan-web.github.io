@@ -287,13 +287,26 @@ const Online = (() => {
   const LIST_CACHE_MS = 5 * 60 * 1000;   // 2분 → 5분 (v0.96, 읽기 한도 아끼기)
   let listCache = null;
   const dropListCache = () => { listCache = null; };
-  async function listSOS() {
-    if (listCache && listCache.uid === user.uid && Date.now() - listCache.at < LIST_CACHE_MS) return listCache.list;
-    const since = stamp(Date.now() - SOS_EXPIRE_MS);   // 48시간이 지난 요청은 게시판에 보이지 않는다 (그사이 구린내 탐험대가 구조했을 것)
-    const q = await db.collection('sos').where('status', '==', 'open')
-      .orderBy(firebase.firestore.FieldPath.documentId()).startAt(since).limit(BOARD_SIZE + 2).get();   // 30 → 12 (v0.96): 보이는 10개 + 내 요청·남이 맡은 요청 여유
-    const list = q.docs.map(d => ({ id: d.id, sid: idOf(d.id), ...d.data() }))
-      .filter(s => s.owner !== user.uid && !heldByOther(s)).slice(0, BOARD_SIZE);
+  // force: 🔄 새로고침 (예전에는 새로고침도 5분 동안 같은 목록을 보여줘서, 친구가 방금 올린 요청이 안 보였다. v0.100). 너무 자주 누르면 FORCE_GAP_MS 안에는 그대로
+  const FORCE_GAP_MS = 15 * 1000;
+  async function listSOS(force) {
+    if (listCache && listCache.uid === user.uid && Date.now() - listCache.at < (force ? FORCE_GAP_MS : LIST_CACHE_MS)) return listCache.list;
+    // 게시판은 구린내 탐험대가 오기 전(SOS_AUTO_MS, 30분)의 요청만 (v0.100): 그보다 오래된 요청은 요청한 사람이 돌아오면 구린내 탐험대가 구조하므로,
+    //  주인이 떠나 버린 오래된 요청이 게시판 10칸을 막아 새 요청(친구의 요청 등)이 안 보이던 문제를 막는다
+    const since = stamp(Date.now() - SOS_AUTO_MS);
+    // 누가 맡은 요청·내 요청은 빼고 BOARD_SIZE개가 찰 때까지 다음 묶음을 더 읽는다 (v0.100: 예전에는 12건만 읽어서,
+    //  맡겨진 요청이 앞자리를 차지하면 그 뒤에 올라온 새 요청이 아예 읽히지 않았다). 한 번에 PAGE건, 최대 PAGES번
+    const PAGE = BOARD_SIZE + 2, PAGES = 4, list = [];
+    let last = null;
+    for (let i = 0; i < PAGES && list.length < BOARD_SIZE; i++) {
+      let q = db.collection('sos').where('status', '==', 'open').orderBy(firebase.firestore.FieldPath.documentId());
+      q = last ? q.startAfter(last) : q.startAt(since);
+      const r = await q.limit(PAGE).get();
+      for (const d of r.docs) { const s = { id: d.id, sid: idOf(d.id), ...d.data() }; if (s.owner !== user.uid && !heldByOther(s)) list.push(s); }
+      if (r.docs.length < PAGE) break;
+      last = r.docs[r.docs.length - 1];
+    }
+    list.splice(BOARD_SIZE);
     listCache = { uid: user.uid, at: Date.now(), list };
     return list;
   }
