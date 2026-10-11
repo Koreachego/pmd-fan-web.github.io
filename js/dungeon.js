@@ -829,10 +829,29 @@ const Dungeon = (() => {
   }
   // 유턴·볼트체인지·퀵턴 (v0.92): 맞힌 뒤 바로 뒤에 같은 편이 있으면 그 포켓몬과 자리를 바꾼다 (원작의 교체처럼 같은 편이 앞으로)
   //  뒤가 비었거나 적이면 공격만 한다 (물러나기·적과 자리 바꾸기는 너무 세서 넣지 않았다)
+  // 들어갈 수 없는 물·용암 위에 갇힌 포켓몬 (자리 바꾸기·특성이 바뀜 등): 가장 가까운 설 수 있는 빈칸으로 옮긴다 (v0.101 안전망)
+  function unstick(c) {
+    const seen0 = new Set([c.x + ',' + c.y]), q = [[c.x, c.y]];
+    while (q.length) {
+      const [x, y] = q.shift();
+      for (const [dx, dy] of DIRS) {
+        const nx = x + dx, ny = y + dy, k = nx + ',' + ny;
+        if (seen0.has(k) || nx < 0 || ny < 0 || nx >= D.w || ny >= D.h || !openAt(nx, ny)) continue;
+        seen0.add(k);
+        if (passable(c, nx, ny) && !creatureAt(nx, ny)) {
+          c.x = nx; c.y = ny; c.tween = null;
+          if (c.player || seen(c)) log(`${jo(nm(c), '은')} 웅덩이에서 빠져나왔다.`, Math.max(T.cursor, T.moveEnd));
+          return;
+        }
+        q.push([nx, ny]);
+      }
+    }
+  }
   function pivotSwap(user, at) {
     const [dx, dy] = DIRS[(user.dir + 4) % 8], bx = user.x + dx, by = user.y + dy;
     const a = creatureAt(bx, by);
     if (!a || a === user || a.hp <= 0 || a.npc || hostileTo(user, a) || !diagOK(user.x, user.y, dx, dy)) return;
+    if (!passable(a, user.x, user.y) || !passable(user, bx, by)) return;   // 물·용암에 들어갈 수 없는 쪽이 있으면 바꾸지 않는다
     const fx = user.x, fy = user.y, dur = 125 * spd();
     user.x = bx; user.y = by; a.x = fx; a.y = fy;
     user.tween = { fx, fy, start: at, dur }; a.tween = { fx: bx, fy: by, start: at, dur };
@@ -1705,7 +1724,7 @@ const Dungeon = (() => {
       if (!path) break;
       const mx = path.fx - a.x, my = path.fy - a.y;
       const b = creatureAt(a.x + mx, a.y + my);
-      if (b && b.ally && b.swapped !== D.turn && diagOK(a.x, a.y, mx, my)) {   // 길을 막은 동료와 자리를 바꾼다 (막다른 길에서 되돌아갈 때)
+      if (b && b.ally && b.swapped !== D.turn && diagOK(a.x, a.y, mx, my) && passable(b, a.x, a.y)) {   // 길을 막은 동료와 자리를 바꾼다 (막다른 길에서 되돌아갈 때). 그 동료가 내 자리(물·용암)에 설 수 있을 때만
         b.x = a.x; b.y = a.y; schedMove(b, a.x + mx, a.y + my); b.swapped = D.turn;
         a.x += mx; a.y += my; a.dir = dirIndex(mx, my);
         continue;
@@ -2474,6 +2493,7 @@ const Dungeon = (() => {
         damage(e, pctDmg(e, 1 / 8), null, T.base);
       }
     }
+    for (const c of [p, ...D.mons]) if (c.hp > 0 && !passable(c, c.x, c.y)) unstick(c);
     if (D.terrain && --D.terrainT <= 0) {   // 필드가 끝났다
       log(`발밑의 ${TERRAINS[D.terrain].icon} ${jo(TERRAINS[D.terrain].n, '이')} 사라졌다.`, Math.max(T.cursor, T.moveEnd));
       D.terrain = null; CUR_TERRAIN = null;
