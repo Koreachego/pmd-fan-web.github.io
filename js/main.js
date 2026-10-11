@@ -1372,20 +1372,23 @@ const Game = (() => {
   }
 
   // ── 얼루기 교환소 (v0.100) ──
-  //  창고의 잡동사니 도구(isJunk) JUNK_PER_TICKET개 → 티켓 1장. 값싼 것부터 쓰고, 🔒을 걸어 둔 도구는 쓰지 않는다 (save.junkKeep)
+  //  창고의 잡동사니 도구(isJunk)를 상점 값(junkPts)으로 세어 TICKET_PRICE어치 → 티켓 1장. 값싼 것부터 쓰고, 🔒을 걸어 둔 도구는 쓰지 않는다 (save.junkKeep)
+  //  넘친 값은 다음 티켓에 쓰도록 남겨 둔다 (save.junkPts)
   //  티켓: 고정 교환(TICKET_TRADES) 또는 뽑기 1장(GACHA_TABLE). 받은 물건은 창고로 (자동 판매하지 않음)
   const SIG_HOST = 453;   // 삐딱구리 (전용 도구 트레이드)
   const junkKept = id => (save.junkKeep || []).includes(id);
-  const junkIds = () => Object.keys(save.storage).filter(id => save.storage[id] > 0 && isJunk(id)).sort((a, b) => sellOf(a) - sellOf(b) || byKind(a, b));
-  const junkCount = () => junkIds().filter(id => !junkKept(id)).reduce((s, id) => s + save.storage[id], 0);
+  const junkIds = () => Object.keys(save.storage).filter(id => save.storage[id] > 0 && isJunk(id) && junkPts(id) > 0).sort((a, b) => junkPts(a) - junkPts(b) || byKind(a, b));
+  const junkValue = () => (save.junkPts || 0) + junkIds().filter(id => !junkKept(id)).reduce((s, id) => s + junkPts(id) * save.storage[id], 0);
   function junkToTickets(n) {   // 티켓 n장만큼 잡동사니를 쓴다
-    let need = n * JUNK_PER_TICKET;
-    if (junkCount() < need) return false;
+    const need = n * TICKET_PRICE;
+    if (junkValue() < need) return false;
+    let acc = save.junkPts || 0;
     for (const id of junkIds()) {
-      if (junkKept(id) || !need) continue;
-      const k = Math.min(need, save.storage[id]);
-      save.storage[id] -= k; need -= k; if (save.storage[id] <= 0) delete save.storage[id];
+      if (junkKept(id) || acc >= need) continue;
+      const k = Math.min(save.storage[id], Math.ceil((need - acc) / junkPts(id)));
+      save.storage[id] -= k; acc += k * junkPts(id); if (save.storage[id] <= 0) delete save.storage[id];
     }
+    save.junkPts = acc - need;   // 넘친 값은 남겨 둔다
     save.tickets = (save.tickets || 0) + n;
     return true;
   }
@@ -1423,17 +1426,17 @@ const Game = (() => {
   // 교환 탭: 얼루기(티켓 만들기·교환·뽑기) + 삐딱구리 트레이드(티켓 → 전용 도구)
   let exView = 'junk';
   function tabExchange() {
-    const tk = save.tickets || 0, jc = junkCount(), view = exView;
+    const tk = save.tickets || 0, jv = junkValue(), view = exView;
     const tabs = [['junk', '♻ 티켓 만들기'], ['trade', '🔁 교환'], ['gacha', '🎰 뽑기'], ['sig', '🐸 전용 도구'], ['up', '🔨 강화']].map(([k, n]) => `<button class="btn sm${view === k ? '' : ' ghost'}" data-act="ex-view" data-arg="${k}">${n}</button>`).join(' ');
     const pct = w => `${+(w / 10).toFixed(1)}%`;
     const mine = new Set(Object.keys(save.roster).map(Number));
-    const body = view === 'junk' ? `<h3>♻ 티켓 만들기</h3><p>창고의 쓰지 않는 도구 <b>${JUNK_PER_TICKET}개</b>를 티켓 1장으로 바꿔 드려요. 종류는 상관없고, 값싼 도구부터 써요.</p>
-        <div class="btns"><button class="btn" data-act="ex-junk" data-arg="1" ${jc >= JUNK_PER_TICKET ? '' : 'disabled'}>티켓 1장 만들기</button> <button class="btn" data-act="ex-junk" data-arg="all" ${jc >= JUNK_PER_TICKET ? '' : 'disabled'}>모두 바꾸기 (${Math.floor(jc / JUNK_PER_TICKET)}장)</button></div>
+    const body = view === 'junk' ? `<h3>♻ 티켓 만들기</h3><p>창고의 쓰지 않는 도구를 <b>상점 값으로 ₽${TICKET_PRICE}어치</b> 모으면 티켓 1장으로 바꿔 드려요. 종류는 상관없고, 값싼 도구부터 써요. <span class="dim">(넘친 값은 다음 티켓에 쓰도록 남겨 둬요${save.junkPts ? ` · 지금 남은 값 ₽${save.junkPts}` : ''})</span></p>
+        <div class="btns"><button class="btn" data-act="ex-junk" data-arg="1" ${jv >= TICKET_PRICE ? '' : 'disabled'}>티켓 1장 만들기</button> <button class="btn" data-act="ex-junk" data-arg="all" ${jv >= TICKET_PRICE ? '' : 'disabled'}>모두 바꾸기 (${Math.floor(jv / TICKET_PRICE)}장)</button></div>
         <h3>💰 돈으로 사기</h3><p class="dim">도구가 모자라면 티켓을 한 장에 ₽${TICKET_PRICE}에 살 수도 있어요. (가진 돈 ₽${save.money})</p>
         <div class="btns">${[1, 10].map(n => `<button class="btn" data-act="ex-buy" data-arg="${n}" ${save.money >= n * TICKET_PRICE ? '' : 'disabled'}>🎟 ${n}장 사기 (₽${n * TICKET_PRICE})</button>`).join(' ')}</div>
         <h3>♻ 창고의 도구</h3>
         <p class="dim">🔒을 누르면 그 도구는 교환에 쓰지 않아요. (기술머신·지닌 물건·메가스톤·영양제·구미·이상한사탕·특성캡슐 등 귀한 물건과 쇠가시처럼 겹치는 물건은 처음부터 쓰지 않아요)</p>
-        <div class="store-list">${junkIds().map(id => `<div class="row${junkKept(id) ? ' dim' : ''}">${itemLabel(id)} ×${save.storage[id]}<span class="grow"></span><button class="btn sm${junkKept(id) ? '' : ' ghost'}" data-act="ex-keep" data-arg="${id}">${junkKept(id) ? '🔒 안 씀' : '쓰기'}</button></div>`).join('') || '<p class="dim">창고에 바꿀 수 있는 도구가 없어요.</p>'}</div>`
+        <div class="store-list">${junkIds().map(id => `<div class="row${junkKept(id) ? ' dim' : ''}">${itemLabel(id)} ×${save.storage[id]}<span class="grow dim tiny">₽${junkPts(id)}씩</span><button class="btn sm${junkKept(id) ? '' : ' ghost'}" data-act="ex-keep" data-arg="${id}">${junkKept(id) ? '🔒 안 씀' : '쓰기'}</button></div>`).join('') || '<p class="dim">창고에 바꿀 수 있는 도구가 없어요.</p>'}</div>`
       : view === 'trade' ? `<h3>🔁 티켓으로 교환</h3><div class="store-list">${TICKET_TRADES.filter(([id]) => ITEMS[id]).map(([id, c]) => `<div class="row"><div class="grow">${itemLabel(id)}<div class="dim tiny">${esc(ITEMS[id].d)}</div></div><button class="btn sm" data-act="ex-trade" data-arg="${id}" ${tk >= c ? '' : 'disabled'}>🎟 ${c}장</button></div>`).join('')}</div>`
       : view === 'up' ? `<div class="row">${portraitImg(SIG_HOST, 'portrait sm', 'Happy')}<span class="grow"><b>전용 도구 강화</b> <span class="dim">— 크크크… 재료만 가져오면 전용 도구를 단단하게 손봐 주지. 한 번 강화하면 같은 도구는 모두 강해져. (최대 +${SIG_UP_MAX})</span></span></div>
         <input class="sig-q" placeholder="포켓몬·도구 이름으로 찾기" autocomplete="off" style="width:100%;margin:6px 0" oninput="const v=this.value.trim().toLowerCase();this.nextElementSibling.querySelectorAll('[data-s]').forEach(r=>r.hidden=!!v&&!r.dataset.s.includes(v))">
@@ -1448,7 +1451,7 @@ const Game = (() => {
       : `<div class="row">${portraitImg(SIG_HOST, 'portrait sm', 'Happy')}<span class="grow"><b>삐딱구리 트레이드</b> <span class="dim">— 크크크… 티켓을 모아 오면 특별한 전용 도구와 바꿔 주지. 🤝 표시는 영입한 포켓몬이 쓸 수 있는 도구야.</span></span></div>
         <input class="sig-q" placeholder="포켓몬·도구 이름으로 찾기" autocomplete="off" style="width:100%;margin:6px 0" oninput="const v=this.value.trim().toLowerCase();this.nextElementSibling.querySelectorAll('[data-s]').forEach(r=>r.hidden=!!v&&!r.dataset.s.includes(v))">
         <div class="store-list">${SIG_TRADE_ITEMS.filter(id => ITEMS[id]).sort((a, b) => ITEMS[a].hold.only.some(s => mine.has(s)) ? -1 : ITEMS[b].hold.only.some(s => mine.has(s)) ? 1 : 0).map(id => { const ok = ITEMS[id].hold.only.some(s => mine.has(s)); return `<div class="row" data-s="${esc((ITEMS[id].n + ' ' + (ITEMS[id].who || '')).toLowerCase())}"><div class="grow">${itemLabel(id)}${ok ? ' 🤝' : ''}<div class="dim tiny">${esc(ITEMS[id].d)}${ownedCount(id) ? ` · 가지고 있음 ${ownedCount(id)}` : ''}</div></div><button class="btn sm" data-act="ex-sig" data-arg="${id}" ${tk >= SIG_TICKETS ? '' : 'disabled'}>🎟 ${SIG_TICKETS}장</button></div>`; }).join('')}</div>`;
-    return `<div class="row exch-row"><span class="grow">🎟 가진 티켓 <b>${tk}</b>장 · 바꿀 수 있는 도구 <b>${jc}</b>개 <span class="dim">(창고 기준)</span></span></div>
+    return `<div class="row exch-row"><span class="grow">🎟 가진 티켓 <b>${tk}</b>장 · 바꿀 수 있는 도구 값 <b>₽${jv}</b> <span class="dim">(창고 기준 · ₽${TICKET_PRICE}어치 = 티켓 1장)</span></span></div>
       <div class="btns">${tabs}</div>${body}`;
   }
   // 전용 도구 강화: 가진 도구 (창고·가방·지닌 물건), 재료 개수 (창고 + 가방), 재료 쓰기 (창고 먼저)
@@ -2148,7 +2151,7 @@ const Game = (() => {
       case 'nick': return nickDialog(+arg || save.current);
       case 'ex-view': exView = arg; break;
       case 'ex-keep': save.junkKeep = junkKept(arg) ? save.junkKeep.filter(x => x !== arg) : [...(save.junkKeep || []), arg]; break;
-      case 'ex-junk': { const n = arg === 'all' ? Math.floor(junkCount() / JUNK_PER_TICKET) : 1; if (n && junkToTickets(n)) { Sound.play('achieve'); UI.toast(`🎟 티켓 ${n}장을 받았어요!`); } break; }
+      case 'ex-junk': { const n = arg === 'all' ? Math.floor(junkValue() / TICKET_PRICE) : 1; if (n && junkToTickets(n)) { Sound.play('achieve'); UI.toast(`🎟 티켓 ${n}장을 받았어요!`); } break; }
       case 'ex-trade': case 'ex-sig': {
         const c = act === 'ex-sig' ? (SIG_TRADE_ITEMS.includes(arg) ? SIG_TICKETS : 0) : (TICKET_TRADES.find(x => x[0] === arg) || [])[1];
         if (!c || !ITEMS[arg] || (save.tickets || 0) < c) return;
