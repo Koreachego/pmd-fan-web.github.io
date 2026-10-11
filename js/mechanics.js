@@ -313,7 +313,8 @@ function calcHit(att, def, move) {
   dmg *= (crit ? (A.sniper ? 2.25 : 1.5) : 1) * (0.85 + Math.random() * 0.15);
   dmg *= guardMul(def, Dd, move, mt, eff);
   if (phys ? def.reflectT : def.screenT) dmg *= 0.5;   // 리플렉터·빛의장막
-  if (!att.player && def.player && def.partners === 0) dmg *= SOLO_DMG_MUL;   // 혼자 탐험 보정 (동료와 함께 들어왔으면 모두 쓰러져도 없음)
+  if (!att.player && def.player && (def.partners === 0 || def.partners === -1)) dmg *= SOLO_DMG_MUL;   // -1: 청정의 탑 (받는 데미지 보정만, 능력치 보정은 없음)
+  // 위: 혼자 탐험 보정 (동료와 함께 들어왔으면 모두 쓰러져도 없음)
   return { hit: true, dmg: Math.max(1, Math.floor(dmg)), eff, crit };
 }
 

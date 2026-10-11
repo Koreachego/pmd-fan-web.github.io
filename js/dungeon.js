@@ -407,7 +407,7 @@ const Dungeon = (() => {
   }
 
   function newFloor() {
-    run.p.partners = (run.party || []).length;   // 혼자 탐험 보정 (afterPlayer와 같게)
+    run.p.partners = dungeonById(run.dungeon).pure ? -1 : (run.party || []).length;   // 혼자 탐험 보정 (afterPlayer와 같게). 청정의 탑은 보정 없음
     untransform(run.p); (run.party || []).forEach(untransform);   // 괴짜: 지난 층의 변신을 푼다 (이 층에서 처음 만나는 적으로 다시)
     const dg = dungeonById(run.dungeon);
     const bossFloor = isBossFloor(dg, run.floor) && run.bossDone !== run.floor;   // 이미 쓰러뜨린 보스 층을 이어서 하면 보스 없이 (새로고침으로 보스를 다시 잡지 못하게)
@@ -847,6 +847,24 @@ const Dungeon = (() => {
       }
     }
   }
+  // 동료가 비켜 설 칸: 그 동료가 설 수 있는 빈칸 중 리더에게서 먼 쪽 (가까운 칸부터 3칸 안에서 찾는다)
+  function allyStepAside(t, p) {
+    const seen0 = new Set([t.x + ',' + t.y]); let q = [[t.x, t.y]];
+    for (let d = 0; d < 3 && q.length; d++) {
+      const next = [], found = [];
+      for (const [x, y] of q) for (const [dx, dy] of DIRS) {
+        const nx = x + dx, ny = y + dy, k = nx + ',' + ny;
+        if (seen0.has(k) || !passable(t, nx, ny) || !diagOK(x, y, dx, dy)) continue;
+        seen0.add(k);
+        if (nx === p.x && ny === p.y) continue;
+        if (!creatureAt(nx, ny)) found.push({ x: nx, y: ny });
+        else if (creatureAt(nx, ny).ally) next.push([nx, ny]);   // 다른 동료 너머로도
+      }
+      if (found.length) return found.sort((a, b) => cheb(b, p) - cheb(a, p))[0];
+      q = next.length ? next : q.flatMap(([x, y]) => DIRS.map(([dx, dy]) => [x + dx, y + dy]).filter(([nx, ny]) => passable(t, nx, ny)));
+    }
+    return null;
+  }
   function pivotSwap(user, at) {
     const [dx, dy] = DIRS[(user.dir + 4) % 8], bx = user.x + dx, by = user.y + dy;
     const a = creatureAt(bx, by);
@@ -872,6 +890,7 @@ const Dungeon = (() => {
     if (mid === EXPANDING_FORCE && CUR_TERRAIN === 'psychic' && grounded(user)) move = { ...move, r: 'r' };   // 와이드포스: 사이코필드에서는 주변(3칸 안)의 모든 상대에게 (위력 80 → 120은 powerMul)
     if (slot >= 0 && !opts.free) {
       if (party(user) && Math.random() < masteryFree(user.sp, mid)) log(`${jo(nm(user), '은')} PP를 쓰지 않았다! (숙련도)`, T.base);
+      else if (party(user) && heldOf(user).ppFree && Math.random() < heldOf(user).ppFree) log(`${jo(nm(user), '은')} PP를 쓰지 않았다! (${ITEMS[user.held].n} +${SIG_UP_TOP})`, T.base);   // 전용 도구 +4
       else user.moves[slot].pp--;
     }
     user.dir = dir;
@@ -898,6 +917,7 @@ const Dungeon = (() => {
     const t0 = schedAction(user, anim, dur);
     const hitAt = t0 + dur * 0.55;
     if (slot >= 0 && visible) log(`${nm(user)}의 ${move.n}!`, t0);
+    if (slot >= 0) user.lastUse = { id: mid, turn: D.turn };   // 연속으로 쓸 수 없는 기술 (repeatBlocked)
     const fail = msg => { log(msg || '그러나 실패했다!', hitAt); user.lastMissed = true; };
     const blk = WX_BLOCK[weatherRaw()];
     if (blk && move.c !== 1 && moveType(user, move) === blk) return fail(blk === 11 ? '아주 강한 햇살에 물 기술이 증발해 버렸다!' : '강한 비에 불꽃 기술이 꺼져 버렸다!');
@@ -1421,7 +1441,7 @@ const Dungeon = (() => {
     }
     if (src && abilityOf(c).aftermath && src.hp > 0 && (abilityOf(c).aftermath !== 'contact' || c.lastHitContact)) { abLog(c, `${jo(nm(src), '은')} 폭발에 휘말렸다!`, at); damage(src, pctDmg(src, 1 / 4), c, at); }   // 유폭은 접촉 기술로 쓰러졌을 때만, 내용물분출은 어떤 공격이든 (v0.100)
     if (byParty) {
-      const expOf = m => Math.floor(expGain(c, m.lv) * (c.outlaw || c.boss ? BOSS_EXP_MUL : 1) * (c.shiny ? 2 : 1) * (heldOf(m).expMul || 1) * (run.mode === 'rogue' ? ROGUE_EXP_MUL : 1));
+      const expOf = m => Math.floor(expGain(c, m.lv) * (c.outlaw || c.boss ? BOSS_EXP_MUL : 1) * (c.shiny ? 2 : 1) * (heldOf(m).expMul || 1) * (run.mode === 'rogue' && !dungeonById(run.dungeon).pure ? ROGUE_EXP_MUL : 1));   // 청정의 탑은 로그라이크 경험치 보정 없음
       gainExp(expOf(P()), at);
       for (const a of allies()) allyExp(a, expOf(a), at);   // 동료도 같은 방식으로 경험치를 받는다
       const free = floorAt(c.x, c.y) && !itemAt(c.x, c.y) && !(D.stairs.x === c.x && D.stairs.y === c.y);   // 웅덩이 위에서 쓰러지면 떨어뜨리지 않는다
@@ -1821,7 +1841,7 @@ const Dungeon = (() => {
     if (sees) e.target = { x: p.x, y: p.y };
     if (e.thief) e.target = { x: P().x, y: P().y };   // 화난 켈리몬: 어디 있든 쫓아온다
     const dx = p.x - e.x, dy = p.y - e.y, dist = Math.max(Math.abs(dx), Math.abs(dy));
-    const usable = e.moves.map((m, i) => ({ m: DATA.moves[m.id], i, pp: m.pp, id: m.id })).filter(o => o.pp > 0 && !selfKOBlocked(e, o.id) && !(e.tauntT && o.m.c === 1));
+    const usable = e.moves.map((m, i) => ({ m: DATA.moves[m.id], i, pp: m.pp, id: m.id })).filter(o => o.pp > 0 && !selfKOBlocked(e, o.id) && !repeatBlocked(e, o.id, D.turn) && !(e.tauntT && o.m.c === 1));
     // 능력 변화 기술은 이미 충분히 바뀌었으면 쓰지 않는다 (작아지기·칼춤을 끝없이 쌓거나 상대 능력을 계속 깎지 않게)
     const worthUsing = (e, p, m) => {
       const R = MOVE_RULES[m.id] || {};   // 새 변화 기술: 소용없을 때는 쓰지 않는다
@@ -1992,6 +2012,7 @@ const Dungeon = (() => {
         if (!m) return false;
         if (m.pp <= 0) { log('PP가 남아있지 않다!', now()); return false; }
         if (p.tauntT && DATA.moves[m.id].c === 1) { log(`${jo(nm(p), '은')} 도발당해서 ${jo(DATA.moves[m.id].n, '을')} 쓸 수 없다! (${p.tauntT}턴 남음)`, now()); return false; }
+        if (repeatBlocked(p, m.id, D.turn)) { log(`${jo(DATA.moves[m.id].n, '은')} 연속으로 쓸 수 없다! (한 턴 다른 행동을 한 뒤에)`, now()); return false; }
         if (selfKOBlocked(p, m.id)) { log(`HP가 부족해서 ${jo(DATA.moves[m.id].n, '을')} 쓸 수 없다! (HP 절반 이상 필요)`, now()); return false; }
         const mv = DATA.moves[m.id];
         if (action.autoFace !== false) autoFace(p, mv, m.id);
@@ -2045,6 +2066,18 @@ const Dungeon = (() => {
       t.x = fx; t.y = fy; schedMove(t, p.x + dx, p.y + dy); t.swapped = D.turn;
       p.x += dx; p.y += dy; schedMove(p, fx, fy); markMoved(p, fx, fy);
       onStep(); return true;
+    }
+    // 물·용암 위의 리더가 땅의 동료 쪽으로 나올 때: 동료는 리더 자리(물)에 설 수 없으니 옆 빈칸으로 비켜 준다 (v0.102)
+    //  (예전에는 자리를 바꾸지 못해 물 타입·부유 리더가 웅덩이에서 나오지 못했다)
+    if (t && t.ally && diagOK(p.x, p.y, dx, dy) && passable(p, p.x + dx, p.y + dy) && !passable(t, p.x, p.y)) {
+      const spot = allyStepAside(t, p);
+      if (spot) {
+        const ox = t.x, oy = t.y;
+        t.x = spot.x; t.y = spot.y; schedMove(t, ox, oy); t.swapped = D.turn;
+        const fx = p.x, fy = p.y;
+        p.x += dx; p.y += dy; schedMove(p, fx, fy); markMoved(p, fx, fy);
+        onStep(); return true;
+      }
     }
     if (!canStep(p, dx, dy)) return false;
     const fx = p.x, fy = p.y;
@@ -2398,7 +2431,7 @@ const Dungeon = (() => {
     return Game.save.missions.accepted.filter(ms => ms.dungeon === dg.id && ms.floor === run.floor && !run.done.includes(ms.id));
   }
   // 올라가는 계단을 쓰는 던전 (탑·산·하늘): 원작처럼
-  const STAIRS_UP = new Set(['sky', 'summit', 'burned', 'spiral', 'twofist', 'mega', 'coronet', 'frost', 'volcano', 'skyplain', 'canyon', 'magma']);
+  const STAIRS_UP = new Set(['purity', 'sky', 'summit', 'burned', 'spiral', 'twofist', 'mega', 'coronet', 'frost', 'volcano', 'skyplain', 'canyon', 'magma']);
   const goWord = () => (D && STAIRS_UP.has(D.dg.id) ? '올라' : '내려');   // 계단 창: 탑·산은 '올라간다'
   // 개발용 (로컬에서만 메뉴에 나온다): 보스·중간 보스 층으로 바로 내려간다
   function devJump(kind) {
@@ -2445,15 +2478,15 @@ const Dungeon = (() => {
       a.regen = (a.regen || 0) + (a.maxhp / 110 + 0.05) * (abVal(a, 'regen') || 1) * (heldOf(a).regen || 1) * (heldOf(a).sludge && a.types.includes(4) ? 2.5 : 1);   // 검은오물: 독 타입이면 2.5배
       if (a.regen >= 1) { const n = Math.floor(a.regen); if (p.belly > 0 && a.hp < a.maxhp) a.hp = Math.min(a.maxhp, a.hp + n); a.regen -= n; }
     }
-    p.partners = (run.party || []).length;   // 혼자 탐험 보정: 동료 없이 들어왔을 때만 (동료가 모두 쓰러져도 생기지 않음)
+    p.partners = dungeonById(run.dungeon).pure ? -1 : (run.party || []).length;   // 혼자 탐험 보정 (청정의 탑은 없음): 동료 없이 들어왔을 때만 (동료가 모두 쓰러져도 생기지 않음)
     D.turn++; run.turnsOnFloor++; run.turns = (run.turns || 0) + 1;
-    const wi = WIND.warn.indexOf(run.turnsOnFloor);
+    const WD = windOf(D.dg), wi = WD.warn.indexOf(run.turnsOnFloor);
     if (wi >= 0) {
       Sound.play('wind');
       log(['어디선가 바람이 불어오기 시작했다...', '바람이 강해졌다... 서두르자!', '바람이 매우 강해졌다! 곧 날려갈 것 같다!'][wi], T.base);
       setFace(wi === 2 ? 'Worried' : 'Surprised', 2000); stopAuto();
     }
-    if (run.turnsOnFloor >= WIND.limit && !D.dead) {
+    if (run.turnsOnFloor >= WD.limit && !D.dead) {
       log('거센 바람에 날려 던전 밖으로 쫓겨났다!', T.base);
       D.dead = true; stopAuto();
       D.prompts = [() => Game.endRun('wind')];
@@ -2507,7 +2540,9 @@ const Dungeon = (() => {
       for (const c of [p, ...D.mons]) {
         if (c.npc || c.hp <= 0 || c.types.some(t => t === 5 || t === 6 || t === 9) || abilityOf(c).chipImmune) continue;
         if (c.player || seen(c)) log(`모래바람이 ${jo(nm(c), '을')} 덮쳤다!`, at);
+        const hp0 = c.hp;
         damage(c, pctDmg(c, 1 / 16), null, at);
+        if (c === p) D.wxChip = (D.wxChip || 0) + Math.max(0, hp0 - c.hp);   // 자동 이동은 모래바람 데미지로 멈추지 않는다 (autoTick)
       }
     }
     // 함정 발견: 리더 옆 칸은 기본 20%. 날카로운눈·위험예지는 그 특성을 가진 포켓몬(동료 포함) 근처에서
@@ -2969,7 +3004,8 @@ const Dungeon = (() => {
   function autoTick() {
     const a = D.auto, p = P();
     if (!a) return;
-    if (p.hp < a.hp && a.kind !== 'fight') { stopAuto(p.belly <= 0 ? '배가 고파서 HP가 줄고 있다! 무언가 먹어야 한다.' : '공격을 받았다!'); return; }
+    const chip = D.wxChip || 0; D.wxChip = 0;   // 모래바람 데미지는 '공격을 받았다'로 치지 않는다 (HP가 위험해지면 멈춘다)
+    if ((p.hp + chip < a.hp || (chip && p.hp <= p.maxhp * DANGER_HP)) && a.kind !== 'fight') { stopAuto(p.belly <= 0 ? '배가 고파서 HP가 줄고 있다! 무언가 먹어야 한다.' : '공격을 받았다!'); return; }
     a.hp = p.hp;
     if (++a.n > 800) { stopAuto(); return; }
     if (a.kind === 'fight') { autoFight(); D.auto = null; return; }
@@ -3058,7 +3094,7 @@ const Dungeon = (() => {
     if (!tgt) { for (const f of foes) { const ph = approachPath(p, f); if (ph && (!path || ph.len < path.len)) { path = ph; tgt = f; } } }
     const dx = tgt.x - p.x, dy = tgt.y - p.y, dist = Math.max(Math.abs(dx), Math.abs(dy));
     const cands = [{ slot: -1, s: moveScore(p, tgt, NORMAL_ATTACK) }];
-    p.moves.forEach((m, i) => { if (m.pp > 0 && !selfKOBlocked(p, m.id)) { const mv = DATA.moves[m.id]; cands.push({ slot: i, mv, s: moveScore(p, tgt, mv) * (mv.r === 'r' ? 1.1 : 1) }); } });
+    p.moves.forEach((m, i) => { if (m.pp > 0 && !selfKOBlocked(p, m.id) && !repeatBlocked(p, m.id, D.turn)) { const mv = DATA.moves[m.id]; cands.push({ slot: i, mv, s: moveScore(p, tgt, mv) * (mv.r === 'r' ? 1.1 : 1) }); } });
     const dir = dirIndex(dx, dy);
     if (dist === 1 && diagOK(p.x, p.y, Math.sign(dx), Math.sign(dy))) {
       const best = cands.filter(c => c.slot < 0 || c.mv.r !== 's').sort((a, b) => b.s - a.s)[0];
@@ -3424,7 +3460,7 @@ const Dungeon = (() => {
       while (el.children.length > 1 && [...el.children].reduce((h, c) => h + c.offsetHeight, 0) > avail + 1) el.firstElementChild.remove();
     }
     updateFace(t);
-    const wl = run.turnsOnFloor >= WIND.warn[0] ? WIND.warn.filter(w => run.turnsOnFloor >= w).length : 0;
+    const WD = windOf(D.dg), wl = run.turnsOnFloor >= WD.warn[0] ? WD.warn.filter(w => run.turnsOnFloor >= w).length : 0;
     const wind = document.getElementById('wind-ind');
     const wtxt = wl ? ['', '🌬 바람', '🌬🌬 강한 바람', '🌬🌬🌬 거센 바람'][wl] : '';
     if (wind.textContent !== wtxt) { wind.textContent = wtxt; wind.className = 'wl' + wl; }

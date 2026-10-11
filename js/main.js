@@ -1177,7 +1177,7 @@ const Game = (() => {
     { k: 'rogue', icon: '🌀', n: '로그라이크 정복', d: '로그라이크 던전을 모두 클리어' },
     { k: 'all', icon: '🏆', n: '완전 정복', d: '일반·테마·로그라이크 던전을 모두 클리어' },
   ];
-  const medalDungeons = k => DUNGEONS.filter(d => DG_TABS.find(t => t[0] === k)[2](d) && !d.hidden);   // 숨은 던전은 메달에 들어가지 않는다
+  const medalDungeons = k => DUNGEONS.filter(d => DG_TABS.find(t => t[0] === k)[2](d) && !d.hidden && !d.noMedal);   // 청정의 탑은 메달에 들어가지 않는다 (도전 과제)   // 숨은 던전은 메달에 들어가지 않는다
   // 진화 전 모습의 기록도 합친다 (그 모습을 따로 데리고 있지 않을 때: 예전 세이브는 진화할 때 기록을 옮기지 않았다)
   const clearsOf = sp => {
     const all = save.clears || {};
@@ -1220,7 +1220,7 @@ const Game = (() => {
     const byLevel = (a, b) => a.mode === 'rogue' || b.mode === 'rogue' ? 0 : a.lv[0] - b.lv[0] || a.lv[1] - b.lv[1];
     // 숨은 던전은 열린 것만 보인다 (메달 진행도에는 들어가지 않는다)
     const allHere = DUNGEONS.filter(cur[2]).sort(byLevel), hiddenLeft = allHere.filter(d => d.hidden && !unlocked(d)).length;
-    const mine = clearsOf(save.current), curList = allHere.filter(d => !d.hidden);
+    const mine = clearsOf(save.current), curList = allHere.filter(d => !d.hidden && !d.noMedal);
     const shown = allHere.filter(d => !d.hidden || unlocked(d));
     const medal = MEDALS.find(m => m.k === dgTab);
     const progress = dgTab === 'daily' ? '' : `<div class="dg-progress">${portraitImg(save.current, 'portrait xs', 'Normal', save.roster[save.current]?.shiny)} <span><b>${esc(spName(save.current))}</b>${jo(spName(save.current), '으로').slice(spName(save.current).length)} 클리어 <b>${curList.filter(d => mine[d.id]).length}</b>/${curList.length}</span>
@@ -1238,7 +1238,7 @@ const Game = (() => {
         ${dg.wx && dg.wx.length ? `<div class="note">날씨: ${dg.wx.map(([w, p]) => `${WEATHERS[w].icon}${WEATHERS[w].n} ${Math.round(p * 100)}%`).join(' · ')}</div>` : ''}
         ${!dg.theme && bossPool(dg).length ? `<div class="note theme">👑 최종 보스 ${bossPool(dg).map(spName).join(' / ')}${bossPool(dg).length > 1 ? ' 중 하나' : ''}${midPool(dg).length ? ` · 중간 보스 ${dg.mid.floors.join(', ')}층` : ''}</div>` : ''}
         ${dg.theme ? `<div class="note theme">👑 ${esc(dg.theme)} — 최종 보스 ${bossPool(dg).map(spName).join(' / ') || '?'}${bossPool(dg).length > 1 ? ' 중 하나' : ''}${midPool(dg).length ? ` · 중간 보스 ${dg.mid.floors.join(', ')}층` : ''}</div>` : ''}
-        ${dg.mode === 'rogue' ? `<div class="note">입장 시 Lv${ROGUE_LEVEL}, 가방 초기화 (지닌 물건은 그대로). 나오면 원래대로 돌아갑니다.</div>` : ''}
+        ${dg.pure ? `<div class="note theme">🌲 원작의 청정숲처럼: Lv${rogueLv(dg)}로 혼자, 가방도 지닌 물건도 없이 들어갑니다. 전설·환상은 들어갈 수 없음. 보스 없음, 받는 데미지 ${SOLO_DMG_MUL}배 말고는 보정 없음. 99층을 오르면 🎟 티켓 ${PURE_TICKETS}장과 💎청정의 결정(전용 도구 +4 강화). 나오면 원래대로 돌아갑니다.</div>` : dg.mode === 'rogue' ? `<div class="note">입장 시 Lv${ROGUE_LEVEL}, 가방 초기화 (지닌 물건은 그대로). 나오면 원래대로 돌아갑니다.</div>` : ''}
         ${ms ? `<div class="note ms">📜 진행 중인 임무 ${ms}개</div>` : ''}
         <div class="dg-btns">${sosLocked(dg.id) ? (save.sos.revived   // 구조된 뒤에는 여기서 바로 이어서 탐험 (v0.98: 구조 대기 중으로 막혀 보여서 다시 못 들어간다는 제보)
             ? `<button class="btn" data-act="sos-resume">🆘 ${save.sos.floor}F부터 이어서 탐험</button>`
@@ -1310,7 +1310,7 @@ const Game = (() => {
       <div class="row"><span class="grow"><b>${dg.floors}층 (최종)</b> ${finals.length ? finals.map(spName).join(' / ') + (finals.length > 1 ? ' 중 하나' : '') : '그 층 후보 중 가장 강한 포켓몬'} · Lv${Math.min(MAX_LEVEL, floorLv(dg.floors) + (BOSS_SOLO.has(dg.id) ? 0 : 3))}${BOSS_SOLO.has(dg.id) ? ' · 부하 없이 혼자' : ''}</span></div>
       ${finals.length ? mon(finals) : ''}
       ${midPool(dg).length ? `<div class="row"><span class="grow"><b>중간 보스 ${dg.mid.floors.join(', ')}층</b> 아래 중 하나씩 (한 탐험에서 겹치지 않음)</span></div>${mon(midPool(dg))}` : ''}
-      ${dg.mode === 'rogue' ? '<p class="dim">10층마다 그 층 후보 중 가장 강한 포켓몬이 중간 보스로 나온다.</p>' : ''}
+      ${dg.mode === 'rogue' && !dg.noBoss ? '<p class="dim">10층마다 그 층 후보 중 가장 강한 포켓몬이 중간 보스로 나온다.</p>' : ''}
       <p class="dim">보스는 HP ${hard ? HARD_BOSS.hp : 3.5}배, 공격·방어·특공·특방 ${hard ? HARD_BOSS.stat : 1.1}배, 레벨 +3${hard ? ` (최고 Lv${MAX_LEVEL})` : ''}. 쓰러뜨리면 계단이 나타나고 돈과 좋은 아이템을 준다.${hard ? ` 보스방에서는 보스와 ${HARD_BOSS_NEAR}칸 더 가까이에서 시작한다.` : ''}</p>`;
     // 특징
     const firstAt = lv => { for (let f = 1; f <= dg.floors; f++) if (floorLv(f) >= lv) return f; return 0; };
@@ -1331,8 +1331,10 @@ const Game = (() => {
       hard ? '' : houseF ? `몬스터하우스: ${houseF}층부터 층마다 ${Math.round(HOUSE_CHANCE * 100)}%` : '몬스터하우스 없음',
       dg.hidden ? '숨은 던전 (메달 진행도에는 들어가지 않는다)' : '',
       dg.extra ? (dg.theme ? `${dg.theme} 시리즈가 일반 적으로도 섞여 나온다` : `${dg.extra.filter(id => DATA.species[id]).map(spName).join('·')}도 일반 적으로 섞여 나온다`) : '',
-      `한 층에 머물 수 있는 시간: ${WIND.limit}턴 (넘으면 바람에 날려감)`,
-      dg.mode === 'rogue' ? `로그라이크: Lv${ROGUE_LEVEL}, 기본 가방으로 입장 (지닌 물건은 그대로)` : '',
+      `한 층에 머물 수 있는 시간: ${windOf(dg).limit}턴 (넘으면 바람에 날려감)`,
+      dg.pure ? `청정의 탑: Lv${rogueLv(dg)}, 가방·지닌 물건 없이 혼자 입장. 전설·환상은 들어갈 수 없음. 보스 없음` : dg.mode === 'rogue' ? `로그라이크: Lv${ROGUE_LEVEL}, 기본 가방으로 입장 (지닌 물건은 그대로)` : '',
+      dg.pure ? `적용되는 보정: 받는 데미지 ${SOLO_DMG_MUL}배만 (혼자 탐험의 능력치 보정·로그라이크 보정은 없음). 기술머신과 메가스톤은 들어간 포켓몬(과 그 진화형)의 것만 나온다`
+        : dg.mode === 'rogue' ? `적용되는 보정: 경험치 ${ROGUE_EXP_MUL}배 · 과사열매 ${ROGUE_DROP_MUL.leppa}배·맥스엘릭서 ${ROGUE_DROP_MUL.elixir}배·영양제와 구미 ${ROGUE_RARE_MUL}배 잘 나옴 · 혼자 탐험 보정(받는 데미지 ${SOLO_DMG_MUL}배·HP를 뺀 능력치 ${SOLO_STAT_MUL}배) · 기술머신은 들어간 포켓몬이 배울 수 있는 것만` : '',
     ].filter(Boolean);
     // 아이템: 마지막 층 기준 드롭 확률 (앞쪽 층은 등급이 낮은 아이템만)
     const dropLvAt = f => dropLvFor(dg, f, hard ? normLv(f) + HARD_DROP_LV : normLv(f));   // 하드: 한 등급 위 (js/dungeon.js D.lvl)
@@ -1361,7 +1363,7 @@ const Game = (() => {
         <p>${dg.floors}층 · ${dg.mode === 'rogue' ? '로그라이크' : '일반'} 던전${dg.theme ? ` · 👑 ${esc(dg.theme)}` : ''} · ${dg.types ? typeBadges(dg.types) : '<span class="type" style="background:#777">모든 타입</span>'}
           ${dg.req ? `<br><span class="dim">${esc(jo(dungeonById(dg.req).n, '을'))} 클리어하면 열림</span>` : ''}</p>
         <ul class="dg-feat">${feat.map(x => `<li>${x}</li>`).join('')}</ul>
-        ${bossHtml}
+        ${dg.noBoss ? "" : bossHtml}
         <h3>나오는 포켓몬 <span class="dim">${seenIn([...allIds])}/${allIds.size}종 만남 · 층마다 이 중 6종이 무작위로 등장${!dg.extra && [...PARADOX_PAST, ...PARADOX_FUTURE].some(id => allIds.has(id)) ? ' (패러독스 포켓몬은 드물게)' : ''} · 어두운 것은 아직 못 만난 포켓몬</span></h3>
         ${bands.map((b, i) => `<details${i === 0 ? ' open' : ''}><summary><b>${b.a === b.b ? b.a : `${b.a}~${b.b}`}층</b> <span class="dim">${hard ? `Lv${dg.lv[1]}` : `Lv${floorLv(b.a)}~${floorLv(b.b)}`} · ${b.ids.length}종 (만남 ${seenIn(b.ids)})</span></summary>${mon(b.ids)}</details>`).join('')}
         <h3>나오는 아이템 <span class="dim">마지막 층 기준 확률 · 한 층에 아이템 ${ITEMS_PER_FLOOR[0]}~${ITEMS_PER_FLOOR[1]}개, 돈 2~4무더기 · ${tierNote}</span></h3>
@@ -1472,10 +1474,10 @@ const Game = (() => {
         <div class="store-list">${junkIds().map(id => `<div class="row${junkFree(id) ? '' : ' dim'}">${itemLabel(id)} ×${save.storage[id]}<span class="grow dim tiny">₽${junkPts(id)}씩 · 쓸 수 있는 것 ${junkFree(id)}개 (₽${junkPts(id) * junkFree(id)})</span>
           <label class="dim tiny">남길 개수 <input type="number" min="0" max="${JUNK_LEAVE_ALL}" step="1" data-jleave="${id}" value="${junkLeave(id)}" style="width:4.2em"></label></div>`).join('') || '<p class="dim">창고에 바꿀 수 있는 도구가 없어요.</p>'}</div>`
       : view === 'trade' ? `<h3>🔁 티켓으로 교환</h3><div class="store-list">${TICKET_TRADES.filter(([id]) => ITEMS[id]).map(([id, c]) => `<div class="row"><div class="grow">${itemLabel(id)}<div class="dim tiny">${esc(ITEMS[id].d)}</div></div><button class="btn sm" data-act="ex-trade" data-arg="${id}" ${tk >= c ? '' : 'disabled'}>🎟 ${c}장</button></div>`).join('')}</div>`
-      : view === 'up' ? `<div class="row">${portraitImg(SIG_HOST, 'portrait sm', 'Happy')}<span class="grow"><b>전용 도구 강화</b> <span class="dim">— 크크크… 재료만 가져오면 전용 도구를 단단하게 손봐 주지. 한 번 강화하면 같은 도구는 모두 강해져. (최대 +${SIG_UP_MAX})</span></span></div>
+      : view === 'up' ? `<div class="row">${portraitImg(SIG_HOST, 'portrait sm', 'Happy')}<span class="grow"><b>전용 도구 강화</b> <span class="dim">— 크크크… 재료만 가져오면 전용 도구를 단단하게 손봐 주지. 한 번 강화하면 같은 도구는 모두 강해져. (최대 +${SIG_UP_MAX}, 청정의 결정이 있으면 +${SIG_UP_TOP})</span></span></div>
         <input class="sig-q" placeholder="포켓몬·도구 이름으로 찾기" autocomplete="off" style="width:100%;margin:6px 0" oninput="const v=this.value.trim().toLowerCase();this.nextElementSibling.querySelectorAll('[data-s]').forEach(r=>r.hidden=!!v&&!r.dataset.s.includes(v))">
-        <div class="store-list">${sigOwned().map(id => { const lv = sigLv(id), to = lv + 1, c = to <= SIG_UP_MAX ? sigUpCost(id, to) : null, ok = c && sigUpOk(c);
-          return `<div class="row" data-s="${esc((ITEMS[id].n + ' ' + (ITEMS[id].who || '')).toLowerCase())}"><div class="grow">${itemLabel(id)}${lv ? ` <b class="sig-lv">+${lv}</b>` : ''}<div class="dim tiny">지금: ${esc(sigUpText(id, lv))}${c ? `<br>+${to}: ${esc(sigUpText(id, to))}<br>재료: 🎟 ${c.tickets}장 · ${ITEMS[c.item].icon}${esc(ITEMS[c.item].n)} ×${c.n} <span class="${haveCount(c.item) >= c.n ? '' : 'warn'}">(가진 것 ${haveCount(c.item)})</span> · ₽${c.money}` : '<br>최대로 강화했어요.'}</div></div>
+        <div class="store-list">${sigOwned().map(id => { const lv = sigLv(id), to = lv + 1, c = to <= SIG_UP_TOP ? sigUpCost(id, to) : null, ok = c && sigUpOk(c);
+          return `<div class="row" data-s="${esc(sigSearch(id))}"><div class="grow">${itemLabel(id)}${lv ? ` <b class="sig-lv">+${lv}</b>` : ''}<div class="dim tiny">지금: ${esc(sigUpText(id, lv))}${c ? `<br>+${to}: ${esc(sigUpText(id, to))}<br>재료: ${c.tickets ? `🎟 ${c.tickets}장 · ` : ''}${ITEMS[c.item].icon}${esc(ITEMS[c.item].n)} ×${c.n} <span class="${haveCount(c.item) >= c.n ? '' : 'warn'}">(가진 것 ${haveCount(c.item)})</span>${c.money ? ` · ₽${c.money}` : ' <span class="dim">(청정의 탑 99층 보상)</span>'}` : '<br>최대로 강화했어요.'}</div></div>
             ${c ? `<button class="btn sm" data-act="ex-up" data-arg="${id}" ${ok ? '' : 'disabled'}>🔨 +${to}</button>` : ''}</div>`; }).join('') || '<p class="dim">강화할 전용 도구가 없어요. 🐸 전용 도구에서 먼저 바꿔 오세요. (창고·가방에 있거나 누군가 지니고 있는 도구만 보여요)</p>'}</div>`
       : view === 'gacha' ? `<h3>🎰 뽑기</h3><p>티켓 1장으로 한 번 뽑아요. 무엇이 나올지는 운이에요!</p>
         <div class="row">💠 <span class="grow">메가스톤이 나오면 받을 것: ${ITEMS[save.gachaMega] ? `${itemLabel(save.gachaMega)}` : '<span class="dim">아직 안 골랐어요 (나오면 그때 골라요)</span>'}</span><button class="btn sm" data-act="ex-mega">${ITEMS[save.gachaMega] ? '바꾸기' : '고르기'}</button></div>
@@ -1484,10 +1486,12 @@ const Game = (() => {
         <h3>나오는 물건과 확률</h3><table class="help">${GACHA_TABLE.map(([w, l]) => `<tr><td>${pct(w)}</td><td>${l[0] === '@tm' ? '💿 아무 기술머신 하나' : l[0] === '@mega' ? `💠 메가스톤 (${ITEMS[save.gachaMega] ? `${Gfx.iconHtml(save.gachaMega)} ${esc(ITEMS[save.gachaMega].n)}` : '나오면 원하는 것을 고른다'})` : l.filter(x => ITEMS[x]).map(x => `${ITEMS[x].icon}${esc(ITEMS[x].n)}`).join(' · ')}${l.length > 1 ? ' <span class="dim">(중 하나)</span>' : ''}</td></tr>`).join('')}</table>`
       : `<div class="row">${portraitImg(SIG_HOST, 'portrait sm', 'Happy')}<span class="grow"><b>삐딱구리 트레이드</b> <span class="dim">— 크크크… 티켓을 모아 오면 특별한 전용 도구와 바꿔 주지. 🤝 표시는 영입한 포켓몬이 쓸 수 있는 도구야.</span></span></div>
         <input class="sig-q" placeholder="포켓몬·도구 이름으로 찾기" autocomplete="off" style="width:100%;margin:6px 0" oninput="const v=this.value.trim().toLowerCase();this.nextElementSibling.querySelectorAll('[data-s]').forEach(r=>r.hidden=!!v&&!r.dataset.s.includes(v))">
-        <div class="store-list">${SIG_TRADE_ITEMS.filter(id => ITEMS[id]).sort((a, b) => ITEMS[a].hold.only.some(s => mine.has(s)) ? -1 : ITEMS[b].hold.only.some(s => mine.has(s)) ? 1 : 0).map(id => { const ok = ITEMS[id].hold.only.some(s => mine.has(s)); return `<div class="row" data-s="${esc((ITEMS[id].n + ' ' + (ITEMS[id].who || '')).toLowerCase())}"><div class="grow">${itemLabel(id)}${ok ? ' 🤝' : ''}<div class="dim tiny">${esc(ITEMS[id].d)}${ownedCount(id) ? ` · 가지고 있음 ${ownedCount(id)}` : ''}</div></div><button class="btn sm" data-act="ex-sig" data-arg="${id}" ${tk >= sigTickets(id) ? '' : 'disabled'}>🎟 ${sigTickets(id)}장</button></div>`; }).join('')}</div>`;
+        <div class="store-list">${SIG_TRADE_ITEMS.filter(id => ITEMS[id]).sort((a, b) => ITEMS[a].hold.only.some(s => mine.has(s)) ? -1 : ITEMS[b].hold.only.some(s => mine.has(s)) ? 1 : 0).map(id => { const ok = ITEMS[id].hold.only.some(s => mine.has(s)); return `<div class="row" data-s="${esc(sigSearch(id))}"><div class="grow">${itemLabel(id)}${ok ? ' 🤝' : ''}<div class="dim tiny">${esc(ITEMS[id].d)}${ownedCount(id) ? ` · 가지고 있음 ${ownedCount(id)}` : ''}</div></div><button class="btn sm" data-act="ex-sig" data-arg="${id}" ${tk >= sigTickets(id) ? '' : 'disabled'}>🎟 ${sigTickets(id)}장</button></div>`; }).join('')}</div>`;
     return `<div class="row exch-row"><span class="grow">🎟 가진 티켓 <b>${tk}</b>장 · 바꿀 수 있는 도구 값 <b>₽${jv}</b> <span class="dim">(창고 기준 · ₽${TICKET_PRICE}어치 = 티켓 1장)</span></span></div>
       <div class="btns">${tabs}</div>${body}`;
   }
+  // 전용 도구 검색어: 도구 이름 + 쓸 수 있는 모든 포켓몬 이름 (히스이 조로아크 같은 다른 모습도)
+  const sigSearch = id => [ITEMS[id].n, ITEMS[id].who || '', ...(ITEMS[id].hold.only || []).filter(sp => DATA.species[sp]).map(sp => DATA.species[sp].n)].join(' ').toLowerCase();
   // 전용 도구 강화: 가진 도구 (창고·가방·지닌 물건), 재료 개수 (창고 + 가방), 재료 쓰기 (창고 먼저)
   const sigOwned = () => SIG_TRADE_ITEMS.filter(id => ITEMS[id] && (ownedCount(id) || Object.values(save.roster).some(c => c.held === id)));
   const haveCount = id => (save.storage[id] || 0) + save.bag.filter(b => b.id === id).length;
@@ -2206,7 +2210,7 @@ const Game = (() => {
       case 'ex-mega-pending': return megaPendingPick();
       case 'ex-up': {
         const lv = sigLv(arg), to = lv + 1;
-        if (!sigUpgradable(arg) || to > SIG_UP_MAX) return;
+        if (!sigUpgradable(arg) || to > SIG_UP_TOP) return;
         const c = sigUpCost(arg, to); if (!sigUpOk(c)) return;
         save.tickets -= c.tickets; save.money -= c.money; takeItems(c.item, c.n);
         save.sigLv = { ...(save.sigLv || {}), [arg]: to };
@@ -2339,13 +2343,15 @@ const Game = (() => {
     const ids = new Set([...save.bag.filter(b => ITEMS[b.id]?.tm).map(b => b.id), ...Object.keys(save.storage).filter(id => ITEMS[id]?.tm && save.storage[id] > 0)]);
     return [...ids].sort((a, b) => ITEMS[a].no - ITEMS[b].no);
   }
+  // 기술 설정에서 고를 수 있는 기술: 지금 기술·지금 레벨까지 배우는 기술(진화 전·고른 모습 포함)·기술머신/교배기술로 배운 기술
+  const knownMoves = (sp, ch) => [...new Set([...ch.moves, ...learnableUpTo(sp, ch.lv), ...(ch.form && DATA.species[ch.form] ? learnableUpTo(ch.form, ch.lv) : []), ...preEvos(sp).flatMap(p => learnableUpTo(p, ch.lv)), ...(ch.tms || [])])].filter(m => DATA.moves[m]);
   function tmSection(sp, ch) {
-    const own = ownedTMs();
+    const own = ownedTMs(), knownSet = new Set(knownMoves(sp, ch));   // 레벨로 이미 배운 기술은 기술머신을 쓸 필요가 없다 (예전에는 '배울 수 있음'으로 떴다)
     const learned = (ch.tms || []).filter(m => DATA.moves[m]);
     let h = learned.length ? `<div class="dim">배운 기술: ${learned.map(m => `<span class="ab-link" data-move="${m}">${esc(DATA.moves[m].n)}</span>`).join(', ')}</div>` : '';
     if (!own.length) return h + '<p class="dim">가진 기술머신이 없습니다. 상점에서 매일 2개씩 팔고, 던전에서 드물게 주울 수 있어요.</p>';
     const rows = own.map(id => {
-      const it = ITEMS[id], ok = canLearnTM(sp, it.mv), known = learned.includes(it.mv) || ch.moves.includes(it.mv);
+      const it = ITEMS[id], ok = canLearnTM(sp, it.mv), known = knownSet.has(it.mv);
       return { id, it, usable: ok && !known, ok, known };
     }).sort((a, b) => b.usable - a.usable || a.it.no - b.it.no);
     const usable = rows.filter(r => r.usable).length;
@@ -2355,7 +2361,7 @@ const Game = (() => {
         <label class="chk inline"><input type="checkbox" class="tm-only" checked> 배울 수 있는 것만</label></div>
       <div class="tm-box">${rows.map(r => `<div class="row tm-item" data-s="${esc(r.it.n.toLowerCase())}" data-u="${r.usable ? 1 : 0}"${r.usable ? '' : ' style="display:none"'}>
         <span class="grow">💿 <span class="ab-link" data-move="${r.it.mv}">${esc(r.it.n)}</span>${cnt(r.id) > 1 ? ` <span class="dim">×${cnt(r.id)}</span>` : ''}
-        <span class="${r.ok ? 'dim' : 'warn'}">${r.known ? '이미 배움' : r.ok ? '' : '배울 수 없음'}</span></span>
+        <span class="${r.ok ? 'dim' : 'warn'}">${r.known ? '이미 배움 (기술 설정에서 고를 수 있음)' : r.ok ? '' : '배울 수 없음'}</span></span>
         <button class="btn sm" data-act="use-tm" data-arg="${r.id}" ${r.usable ? '' : 'disabled'}>사용</button></div>`).join('')}
         <p class="dim tm-empty"${usable ? ' style="display:none"' : ''}>조건에 맞는 기술머신이 없습니다.</p></div>`;
   }
@@ -2378,10 +2384,10 @@ const Game = (() => {
 
   // 교배기술: 교배기술머신 하나로 그 포켓몬(진화 전 모습 포함)의 교배기술 하나를 배운다. 배운 기술은 기술머신으로 배운 기술과 같이 ch.tms에 남는다
   function eggSection(sp, ch) {
-    const eggs = eggMovesOf(sp);
+    const eggs = eggMovesOf(sp), knownSet = new Set(knownMoves(sp, ch));
     if (!eggs.length) return '<p class="dim">이 포켓몬은 교배기술이 없습니다.</p>';
     const have = ownedCount('eggtm');
-    return `<div class="tm-box">${eggs.map(m => { const known = (ch.tms || []).includes(m) || ch.moves.includes(m); return `<div class="row">
+    return `<div class="tm-box">${eggs.map(m => { const known = knownSet.has(m); return `<div class="row">
       <span class="grow">🥚 <span class="ab-link" data-move="${m}">${esc(DATA.moves[m].n)}</span> <span class="dim">${known ? '배움' : ''}</span></span>
       <button class="btn sm" data-act="learn-egg" data-arg="${m}" ${known || !have ? 'disabled' : ''}>배우기</button></div>`; }).join('')}</div>
       ${have ? '' : '<p class="dim">교배기술머신이 없습니다. 마을 상점에 가끔 진열되고, 던전에서 드물게 주울 수 있어요.</p>'}`;
@@ -2428,11 +2434,15 @@ const Game = (() => {
     const opts = [];
     save.bag.forEach((b, i) => { if (ITEMS[b.id]?.held) opts.push({ id: b.id, from: 'bag', i }); });
     Object.keys(save.storage).forEach(id => { if (ITEMS[id]?.held && save.storage[id] > 0) opts.push({ id, from: 'storage' }); });
+    // 다른 포켓몬이 지닌 것도 가져올 수 있다 (리더를 바꾸면 지닌 물건은 원래 포켓몬에게 남아 있어서 사라진 것처럼 보였다)
+    Object.keys(save.roster).map(Number).filter(x => x !== +sp && save.roster[x].held && ITEMS[save.roster[x].held])
+      .sort((a, b) => (b === save.current) - (a === save.current) || partyList().includes(b) - partyList().includes(a))
+      .forEach(x => opts.push({ id: save.roster[x].held, from: 'mon', sp: x }));
     if (!opts.length) { UI.alert('지닌 물건', '<p>가방이나 창고에 지닐 수 있는 물건이 없습니다.</p><p class="dim">상점에서 매일 지닌 물건 몇 개를 팔고, 던전에서도 가끔 주울 수 있어요.</p>'); return; }
     UI.open({
       title: `${esc(monName(sp))}에게 지니게 할 물건`, wide: true,
-      choices: opts.map(o => ({ label: `${ITEMS[o.id].icon} ${esc(ITEMS[o.id].n)} <span class="dim">(${o.from === 'bag' ? '가방' : '창고'})</span>`, sub: esc(heldBlockReason(entryAbility(sp, ch), o.id) || ITEMS[o.id].d), disabled: !!heldBlockReason(entryAbility(sp, ch), o.id), fn: () => {
-        if (o.from === 'bag') save.bag.splice(o.i, 1); else { save.storage[o.id]--; if (save.storage[o.id] <= 0) delete save.storage[o.id]; }
+      choices: opts.map(o => ({ label: `${ITEMS[o.id].icon} ${esc(ITEMS[o.id].n)} <span class="dim">(${o.from === 'bag' ? '가방' : o.from === 'mon' ? `${o.sp === save.current ? '리더 ' : ''}${esc(jo(monName(o.sp), '이'))} 지닌 것 — 가져온다` : '창고'})</span>`, sub: esc(heldBlockReason(entryAbility(sp, ch), o.id) || ITEMS[o.id].d), disabled: !!heldBlockReason(entryAbility(sp, ch), o.id), fn: () => {
+        if (o.from === 'bag') save.bag.splice(o.i, 1); else if (o.from === 'mon') save.roster[o.sp].held = null; else { save.storage[o.id]--; if (save.storage[o.id] <= 0) delete save.storage[o.id]; }
         if (ch.held) storeKeep(ch.held);
         ch.held = o.id; persist(); renderTown(); UI.toast(`${jo(ITEMS[o.id].n, '을')} 지니게 했습니다.`);
       } })),
@@ -2494,7 +2504,7 @@ const Game = (() => {
     const ch = save.roster[sp];
     // 진화 전 모습이 이 레벨까지 배우는 기술과 지금 쓰고 있는 기술도 고를 수 있다 (진화해도 잊지 않는다)
     const egg = new Set(eggMovesOf(sp));
-    const all = [...new Set([...ch.moves, ...learnableUpTo(sp, ch.lv), ...(ch.form && DATA.species[ch.form] ? learnableUpTo(ch.form, ch.lv) : []), ...preEvos(sp).flatMap(p => learnableUpTo(p, ch.lv)), ...(ch.tms || [])])].filter(m => DATA.moves[m]);
+    const all = knownMoves(sp, ch);
     if (!all.length) { UI.alert('기술 설정', '<p>배울 수 있는 기술이 없습니다.</p>'); return; }
     const sel = new Set(ch.moves);
     UI.open({
@@ -2583,6 +2593,10 @@ const Game = (() => {
     delete entry.form;   // 골라 둔 모습은 진화 전 포켓몬의 것
     mergeMastery(save, sp, to);   // 숙련도도 진화한 모습으로
     save.roster[to] = keepOther ? other : entry;   // 합칠 때는 레벨이 높은 쪽
+    if (other) {   // 남지 않는 쪽의 지닌 물건: 남는 쪽이 빈손이면 넘겨주고, 아니면 창고로 (예전에는 사라졌다)
+      const kept = save.roster[to], drop = (keepOther ? entry : other).held;
+      if (drop) { if (!kept.held) kept.held = drop; else storeKeep(drop); }
+    }
     if (isLeader) save.current = to;
     if (tmTarget === sp) tmTarget = to;   // 캐릭터 탭에서 보던 동료가 진화하면 진화한 모습을 계속 본다
     // 동료 목록도 진화한 모습으로 (합쳐진 포켓몬이 리더면 동료에서는 빠진다)
@@ -2785,12 +2799,23 @@ const Game = (() => {
   // 구조를 기다리는 던전에는 들어갈 수 없다 (구조받거나 포기하면 풀린다)
   const sosLocked = id => !!(save.sos && save.sos.dungeon === id);
 
+  // 청정의 탑: 전설·환상(준전설·초전설 포함)은 들어갈 수 없다 (v0.102)
+  const pureBlocked = sp => { const S = DATA.species, b = S[sp] && S[sp].f ? S[sp].f[0] : sp; return !!(S[sp]?.lg || S[b]?.lg || ULTRA_LEGEND_IDS.has(b) || SUB_LEGEND_IDS.has(b) || MYTHICAL_IDS.has(b)); };
   async function prepareRun(id) {
     const dg = dungeonById(id);
     if (sosLocked(id) && save.sos.revived) return save.sos.thx ? resumeSOS() : receiveAOKAgain();
     if (sosLocked(id)) { UI.alert('🆘 구조 대기 중', `<p>${esc(dg.n)}에서 구조를 기다리고 있어요. 구조를 받아 이어서 탐험하거나, 임무 탭에서 구조 요청을 포기하면 다시 들어갈 수 있어요.</p>`); return; }
     const ch = save.roster[save.current];
-    if (dg.mode === 'rogue') {
+    if (dg.pure && pureBlocked(save.current)) { UI.alert(esc(dg.n), `<p>${esc(jo(monName(save.current), "은"))} 전설·환상 포켓몬이라 ${esc(dg.n)}에 들어갈 수 없어요.</p><p class="dim">리더를 다른 포켓몬으로 바꿔서 도전해 주세요.</p>`); return; }
+    if (dg.pure) {
+      const ok = await UI.confirm(esc(dg.n), `<p><b>원작의 청정숲 같은 99층 탑</b>입니다.</p><ul>
+        <li>레벨 <b>${rogueLv(dg)}</b>로, <b>가방도 지닌 물건도 없이</b> 혼자 들어갑니다${ch.held ? ` (지닌 ${ITEMS[ch.held].icon}${esc(ITEMS[ch.held].n)}은 마을에 두고 갑니다)` : ''}.</li>
+        <li>보스는 없습니다. 99층 계단을 오르면 클리어이고, 🎟 티켓 <b>${PURE_TICKETS}장</b>과 ${ITEMS.purecrystal.icon}<b>${ITEMS.purecrystal.n}</b>(전용 도구를 +4로 강화)을 받습니다.</li>
+        <li>받는 데미지는 ${SOLO_DMG_MUL}배이지만, 혼자 탐험의 능력치 보정(${SOLO_STAT_MUL}배)과 로그라이크 보정(경험치 ${ROGUE_EXP_MUL}배·PP 회복 도구와 영양제가 잘 나오는 것)은 없습니다.</li>
+        <li>던전에서 나오면 레벨과 가방이 원래대로 돌아옵니다.</li>
+        <li>클리어하거나 탈출하면 주운 돈과 아이템(창고로)을 가져올 수 있습니다. 쓰러지면 아무것도 가져오지 못합니다.</li></ul>`, '들어간다', '그만둔다');
+      if (!ok) return;
+    } else if (dg.mode === 'rogue') {
       const ok = await UI.confirm(esc(dg.n), `<p><b>로그라이크 던전</b>입니다.</p><ul>
         <li>레벨이 <b>${jo(ROGUE_LEVEL, '으로')}</b>, 가방이 초기화된 상태로 들어갑니다. (오랭열매 2개, 사과 1개 지급)</li>
         <li>지닌 물건은 그대로 지니고 들어갑니다${ch.held ? ` (${ITEMS[ch.held].icon}${esc(ITEMS[ch.held].n)})` : ''}. 쓰러져도 잃지 않아요.</li>
@@ -2944,16 +2969,16 @@ const Game = (() => {
   // 로그라이크 기술 고르기 (v0.95): Lv5까지 배우는 기술이 4개를 넘으면 입장할 때 4개를 고른다
   //  처음에는 자동으로 들어가던 4개(마지막 4개)를 골라 두고, 고른 조합은 포켓몬마다 기억한다 (ch.rogueMoves)
   //  결과: 고른 기술 배열 / null (고를 필요 없음) / false (그만둔다)
-  function pickRogueMoves(sp) {
+  function pickRogueMoves(sp, lv = ROGUE_LEVEL) {
     const ch = save.roster[sp];
     // 골라 둔 모습(버드렉스 기수 모습 등)이 있으면 그 모습이 배우는 기술로 (v0.100: 예전에는 원래 모습의 기술만 가져갔다)
     const lsp = ch.form && DATA.species[ch.form]?.f?.[0] === +sp ? ch.form : sp;
-    const pool = learnableUpTo(lsp, ROGUE_LEVEL).filter(m => DATA.moves[m]);
+    const pool = learnableUpTo(lsp, lv).filter(m => DATA.moves[m]);
     if (pool.length <= 4) return Promise.resolve(lsp !== sp ? pool : null);
     const saved = (ch.rogueMoves || []).filter(m => pool.includes(m));
-    let sel = saved.length ? saved : defaultMoves(lsp, ROGUE_LEVEL).filter(m => pool.includes(m));
+    let sel = saved.length ? saved : defaultMoves(lsp, lv).filter(m => pool.includes(m));
     return new Promise(res => {
-      const show = focus => UI.open({ title: `📘 ${esc(spName(sp))} Lv${ROGUE_LEVEL} — 가져갈 기술 4개`, wide: true,
+      const show = focus => UI.open({ title: `📘 ${esc(spName(sp))} Lv${lv} — 가져갈 기술 4개`, wide: true,
         html: `<p class="dim">이 레벨까지 배우는 기술이 ${pool.length}개라 4개만 가져갈 수 있어요. 눌러서 넣고 빼세요. (고른 조합은 다음 로그라이크에도 기억해요)</p>`,
         choices: [
           ...pool.map((m, i) => ({ def: focus === i, label: `${sel.includes(m) ? '✅' : '⬜'} ${moveLine(m)}`, disabled: !sel.includes(m) && sel.length >= 4,
@@ -2968,7 +2993,7 @@ const Game = (() => {
   }
   async function startRun(dg, hard, abilPicks = {}) {
     const sp = save.current, ch = save.roster[sp];
-    const rogueMoves = !hard && dg.mode === 'rogue' ? await pickRogueMoves(sp) : null;
+    const rogueMoves = !hard && dg.mode === 'rogue' ? await pickRogueMoves(sp, rogueLv(dg)) : null;
     if (rogueMoves === false) return;
     noteUse(sp, 'lead'); if (dg.mode === 'normal') for (const id of partyList()) noteUse(id, 'party');   // 엔딩: 가장 많이 함께한 포켓몬
     noteUse(dg.id, 'dungeon');   // 엔딩: 가장 많이 도전한 던전
@@ -2983,10 +3008,10 @@ const Game = (() => {
       return;
     }
     if (dg.mode === 'rogue') {
-      p = makeCreature(sp, ROGUE_LEVEL, { player: true, ability: entryAbility(sp, ch), moves: rogueMoves || undefined });
+      p = makeCreature(sp, rogueLv(dg), { player: true, ability: entryAbility(sp, ch), moves: rogueMoves || undefined });
       p.shiny = !!ch.shiny;
-      p.held = ch.held || null;   // 지닌 물건 하나는 들고 간다 (메가스톤·전용 도구·모습 바꾸는 도구). 캐릭터 기록에서는 빠지지 않는다
-      bag = [{ id: 'oran', n: 1 }, { id: 'oran', n: 1 }, { id: 'apple', n: 1 }];
+      p.held = dg.pure ? null : ch.held || null;   // 청정의 탑: 지닌 물건도 두고 간다   // 지닌 물건 하나는 들고 간다 (메가스톤·전용 도구·모습 바꾸는 도구). 캐릭터 기록에서는 빠지지 않는다
+      bag = dg.pure ? [] : [{ id: 'oran', n: 1 }, { id: 'oran', n: 1 }, { id: 'apple', n: 1 }];   // 청정의 탑: 빈 가방
     } else {
       p = makeCreature(sp, ch.lv, { player: true, exp: ch.exp, moves: ch.moves.length ? ch.moves : undefined, ability: entryAbility(sp, ch), boost: ch.boost });
       p.held = ch.held || null;
@@ -2996,7 +3021,7 @@ const Game = (() => {
     }
     p.selForm = ch.form || undefined;   // 캐릭터 탭에서 골라 둔 모습 (로토무 등)
     p.belly = 100;
-    const run = { dungeon: dg.id, floor: 1, mode: dg.mode, p, bag, money: 0, done: [], party: dg.mode === 'normal' ? partyList().map(makePartner) : [], carried: dg.mode === 'rogue' ? ch.held || null : null };
+    const run = { dungeon: dg.id, floor: 1, mode: dg.mode, p, bag, money: 0, done: [], party: dg.mode === 'normal' ? partyList().map(makePartner) : [], carried: dg.mode === 'rogue' && !dg.pure ? ch.held || null : null };
     show('dungeon-screen');
     Dungeon.enter(run);
   }
@@ -3587,6 +3612,7 @@ const Game = (() => {
         if (items.length) lines.push(`가져온 아이템 ${items.length}종을 창고에 넣었다.`);
         if (r.money) lines.push(`주운 돈 ₽${r.money}`);
         if (outcome === 'clear') { const bonus = dg.floors * 60; save.money += bonus; lines.push(`완주 보너스 ₽${bonus}`); }
+        if (outcome === 'clear' && dg.pure) { save.tickets = (save.tickets || 0) + PURE_TICKETS; lines.push(`🎟 티켓 ${PURE_TICKETS}장을 받았다!`); storeKeep('purecrystal'); lines.push(`${ITEMS.purecrystal.icon} <b>${ITEMS.purecrystal.n}</b>을 받았다! (창고로) 교환 탭의 🔨 강화에서 +3 전용 도구를 +4로 만들 수 있다.`); }   // 청정의 탑 99층 보상
       } else {
         save.money = Math.max(0, save.money - r.money);
         lines.push('쓰러져서 아무것도 가져오지 못했다...');
@@ -3680,7 +3706,7 @@ const Game = (() => {
     };
     if (t === 'info' && D && D.dg) {
       const dg = D.dg, w = D.weather;
-      const here = `<p><b>지금 ${run.floor}층</b> / ${dg.floors}층 · 날씨 ${w ? `${WEATHERS[w].icon} ${WEATHERS[w].n}` : '없음'} · 이 층에서 ${run.turnsOnFloor || 0} / ${WIND.limit}턴</p>`;
+      const here = `<p><b>지금 ${run.floor}층</b> / ${dg.floors}층 · 날씨 ${w ? `${WEATHERS[w].icon} ${WEATHERS[w].n}` : '없음'} · 이 층에서 ${run.turnsOnFloor || 0} / ${windOf(dg).limit}턴</p>`;
       UI.open({ title: esc(dg.n), wide: true, html: head + here + dungeonInfoHtml(dg), choices: close, onOpen });
       return;
     }

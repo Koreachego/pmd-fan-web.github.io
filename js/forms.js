@@ -32,7 +32,9 @@ const MEGA_STONE_PRICE = 30000;
 // (보스·이로치 0.5%, 구조 보답·바닥 아이템·적이 떨어뜨리는 아이템 0.05%)
 const MEGA_RATE = { boss: 0.01, shiny: 0.01, rescue: 0.001, floor: 0.001 };   // v0.52: 2배
 const MEGA_MIN_LV = 35;
-const megaPool = dg => MEGA_STONES.filter(id => typeFits(dg, id));
+// 청정의 탑: 들어간 포켓몬(ROGUE_LEARNER)과 그 진화형의 메가스톤만
+const evoLine = sp => { const out = new Set([sp]), q = [sp]; while (q.length) for (const [to] of (DATA.species[q.shift()].v || [])) if (DATA.species[to] && !out.has(to)) { out.add(to); q.push(to); } return out; };
+const megaPool = dg => { if (dg && dg.pure) { const line = ROGUE_LEARNER ? evoLine(ROGUE_LEARNER) : new Set(); return MEGA_STONES.filter(id => ITEMS[id].hold.only.some(sp => line.has(sp))); } return MEGA_STONES.filter(id => typeFits(dg, id)); };
 // 메가 진화의 탑에서는 출발할 때 고른 메가스톤(save.megaFocus)이 MEGA_FOCUS_RATE 확률로 나온다
 const MEGA_FOCUS_RATE = 0.25;
 function rollMega(kind, lvl, dg) {

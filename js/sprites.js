@@ -11,7 +11,9 @@ const Sprites = (() => {
     if (cache[key]) return cache[key];
     const s = cache[key] = { ready: false, failed: false, anims: {}, shadow: 1 };
     // 걷는 모습이 아직 없는 포켓몬은 진화 전 포켓몬의 그림을 빌려 쓴다 (species.sb)
-    let base = `${SPRITE_BASE}/sprite/${spritePath(DATA.species[id]?.sb || id, shiny)}`;
+    // species.ss: 걷는 그림이 하위 폴더에만 있는 포켓몬 (딩루: 1003/0001, 초상화는 1003)
+    const ss = DATA.species[id]?.ss;
+    let base = `${SPRITE_BASE}/sprite/${ss ? `${pad4(id)}/${ss}/` : spritePath(DATA.species[id]?.sb || id, shiny)}`;
     // CDN에서 못 받으면 GitHub 원래 주소로 한 번 더 (그 뒤 그림도 같은 곳에서)
     const get = u => fetch(u).then(r => { if (!r.ok) throw new Error(r.status); return r.text(); });
     get(base + 'AnimData.xml').catch(() => { base = spriteFallback(base); return get(base + 'AnimData.xml'); }).then(txt => {
