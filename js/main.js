@@ -132,6 +132,21 @@ const Game = (() => {
       if (n > 1) s.money += (n - 1) * SHINY_CHARM_PRICE;
       s.charmV0100 = true;
     }
+    // 영입할 수 없는 포켓몬(무한다이맥스)은 캐릭터 목록에서 뺀다 (v0.101: 세이브를 고쳐 넣은 경우). 지닌 물건은 창고로, 리더였으면 다른 포켓몬으로
+    // 티켓 만들기 (v0.101): 🔒(안 씀)을 '남길 개수'로 바꿨다. 🔒을 걸어 둔 도구는 모두 남긴다
+    if (Array.isArray(s.junkKeep)) { s.junkLeave = { ...Object.fromEntries(s.junkKeep.map(id => [id, JUNK_LEAVE_ALL])), ...(s.junkLeave || {}) }; delete s.junkKeep; }
+    for (const sp of NO_RECRUIT) {
+      const ch = s.roster && s.roster[sp]; if (!ch) continue;
+      if (ch.held) s.storage[ch.held] = (s.storage[ch.held] || 0) + 1;
+      delete s.roster[sp];
+      s.party = (s.party || []).filter(id => +id !== sp);
+      for (const tm of s.teams || []) { if (+tm.lead === sp) { tm.lead = null; tm.party = []; } else tm.party = (tm.party || []).filter(id => +id !== sp); }
+      if (+s.current === sp) {
+        const rest = Object.keys(s.roster).map(Number).sort((a, b) => (s.roster[b].lv || 0) - (s.roster[a].lv || 0));
+        if (rest.length) s.current = rest[0];
+        else { const base = DATA.species[sp].f[0]; s.roster[base] = { ...ch, held: null, form: undefined }; s.current = base; }   // 하나뿐이었으면 원래 모습으로
+      }
+    }
     s.bag = s.bag.filter(b => ITEMS[b.id]);
     if (s.run && Array.isArray(s.run.bag)) s.run.bag = s.run.bag.filter(b => b && ITEMS[b.id]);   // 이어 하던 탐험의 가방도 (없어진 물건: 빛나는부적 등)
     for (const id of Object.keys(s.storage)) if (!ITEMS[id]) delete s.storage[id];
@@ -1372,26 +1387,40 @@ const Game = (() => {
   }
 
   // ── 얼루기 교환소 (v0.100) ──
-  //  창고의 잡동사니 도구(isJunk)를 상점 값(junkPts)으로 세어 TICKET_PRICE어치 → 티켓 1장. 값싼 것부터 쓰고, 🔒을 걸어 둔 도구는 쓰지 않는다 (save.junkKeep)
-  //  넘친 값은 다음 티켓에 쓰도록 남겨 둔다 (save.junkPts)
+  //  창고의 잡동사니 도구(isJunk)를 상점 값(junkPts)으로 세어 TICKET_PRICE어치 → 티켓 1장. 값싼 것부터 쓴다. 넘친 값은 다음 티켓에 쓰도록 남겨 둔다 (save.junkPts)
+  //  도구마다 '남길 개수'(save.junkLeave)를 정하면 그만큼은 쓰지 않는다 (자동 판매의 남길 개수처럼). 티켓은 돈으로도 산다 (TICKET_PRICE)
   //  티켓: 고정 교환(TICKET_TRADES) 또는 뽑기 1장(GACHA_TABLE). 받은 물건은 창고로 (자동 판매하지 않음)
   const SIG_HOST = 453;   // 삐딱구리 (전용 도구 트레이드)
-  const junkKept = id => (save.junkKeep || []).includes(id);
+  const junkLeave = id => Math.max(0, Math.floor(+(save.junkLeave || {})[id]) || 0);
+  const junkFree = id => Math.max(0, (save.storage[id] || 0) - junkLeave(id));   // 티켓에 쓸 수 있는 개수
   const junkIds = () => Object.keys(save.storage).filter(id => save.storage[id] > 0 && isJunk(id) && junkPts(id) > 0).sort((a, b) => junkPts(a) - junkPts(b) || byKind(a, b));
-  const junkValue = () => (save.junkPts || 0) + junkIds().filter(id => !junkKept(id)).reduce((s, id) => s + junkPts(id) * save.storage[id], 0);
-  function junkToTickets(n) {   // 티켓 n장만큼 잡동사니를 쓴다
-    const need = n * TICKET_PRICE;
-    if (junkValue() < need) return false;
-    let acc = save.junkPts || 0;
-    for (const id of junkIds()) {
-      if (junkKept(id) || acc >= need) continue;
-      const k = Math.min(save.storage[id], Math.ceil((need - acc) / junkPts(id)));
-      save.storage[id] -= k; acc += k * junkPts(id); if (save.storage[id] <= 0) delete save.storage[id];
-    }
-    save.junkPts = acc - need;   // 넘친 값은 남겨 둔다
-    save.tickets = (save.tickets || 0) + n;
-    return true;
+  const junkValue = () => (save.junkPts || 0) + junkIds().reduce((s, id) => s + junkPts(id) * junkFree(id), 0);
+  function setJunkLeave(id, v) {
+    const n = Math.max(0, Math.min(JUNK_LEAVE_ALL, Math.floor(+v) || 0)), m = { ...(save.junkLeave || {}) };
+    if (n) m[id] = n; else delete m[id];
+    save.junkLeave = m; persist(); renderTown();
   }
+  // 티켓 n장에 쓸 도구 (바꾸기 전에 보여 주려고 따로 센다): { use: [[id, 개수]], left: 남는 값 }
+  function junkPlan(n) {
+    const need = n * TICKET_PRICE;
+    if (!n || junkValue() < need) return null;
+    let acc = save.junkPts || 0; const use = [];
+    for (const id of junkIds()) {
+      if (acc >= need || !junkFree(id)) continue;
+      const k = Math.min(junkFree(id), Math.ceil((need - acc) / junkPts(id)));
+      use.push([id, k]); acc += k * junkPts(id);
+    }
+    return { use, left: acc - need };
+  }
+  function junkToTickets(n) {   // 티켓 n장만큼 잡동사니를 쓴다
+    const plan = junkPlan(n);
+    if (!plan) return null;
+    for (const [id, k] of plan.use) { save.storage[id] -= k; if (save.storage[id] <= 0) delete save.storage[id]; }
+    save.junkPts = plan.left;   // 넘친 값은 남겨 둔다
+    save.tickets = (save.tickets || 0) + n;
+    return plan;
+  }
+  const junkUseText = use => use.map(([id, k]) => `${ITEMS[id].icon}${esc(ITEMS[id].n)} ×${k}`).join(', ');
   function gachaRoll() {
     const [w, list] = GACHA_TABLE[weighted(GACHA_TABLE.map((e, i) => [i, e[0]]))];
     // 메가스톤 (v0.100): 아무거나가 아니라 미리 고른 메가스톤 (save.gachaMega). 아직 안 골랐으면 뽑은 뒤에 고른다 (save.megaPending)
@@ -1430,13 +1459,18 @@ const Game = (() => {
     const tabs = [['junk', '♻ 티켓 만들기'], ['trade', '🔁 교환'], ['gacha', '🎰 뽑기'], ['sig', '🐸 전용 도구'], ['up', '🔨 강화']].map(([k, n]) => `<button class="btn sm${view === k ? '' : ' ghost'}" data-act="ex-view" data-arg="${k}">${n}</button>`).join(' ');
     const pct = w => `${+(w / 10).toFixed(1)}%`;
     const mine = new Set(Object.keys(save.roster).map(Number));
-    const body = view === 'junk' ? `<h3>♻ 티켓 만들기</h3><p>창고의 쓰지 않는 도구를 <b>상점 값으로 ₽${TICKET_PRICE}어치</b> 모으면 티켓 1장으로 바꿔 드려요. 종류는 상관없고, 값싼 도구부터 써요. <span class="dim">(넘친 값은 다음 티켓에 쓰도록 남겨 둬요${save.junkPts ? ` · 지금 남은 값 ₽${save.junkPts}` : ''})</span></p>
-        <div class="btns"><button class="btn" data-act="ex-junk" data-arg="1" ${jv >= TICKET_PRICE ? '' : 'disabled'}>티켓 1장 만들기</button> <button class="btn" data-act="ex-junk" data-arg="all" ${jv >= TICKET_PRICE ? '' : 'disabled'}>모두 바꾸기 (${Math.floor(jv / TICKET_PRICE)}장)</button></div>
+    const body = view === 'junk' ? `<h3>♻ 티켓 만들기</h3><p>창고의 쓰지 않는 도구를 <b>상점 값으로 ₽${TICKET_PRICE}어치</b> 모으면 티켓 1장으로 바꿔 드려요. 종류는 상관없고, 값싼 도구부터 써요. <span class="dim">(넘친 값은 다음 티켓에 쓰도록 남겨 둬요)</span></p>
+        <div class="row"><span class="grow">모은 값 <b>₽${jv}</b> → 티켓 <b>${Math.floor(jv / TICKET_PRICE)}장</b> <span class="dim">· 다음 티켓까지 ₽${TICKET_PRICE - jv % TICKET_PRICE}</span></span></div>
+        <div class="junk-bar"><i style="width:${Math.round(jv % TICKET_PRICE / TICKET_PRICE * 100)}%"></i></div>
+        ${jv >= TICKET_PRICE ? `<p class="dim tiny">1장 만들면 쓰는 것: ${junkUseText(junkPlan(1).use)}</p>` : ''}
+        <div class="btns"><button class="btn" data-act="ex-junk" data-arg="1" ${jv >= TICKET_PRICE ? '' : 'disabled'}>티켓 1장 만들기</button> ${jv >= TICKET_PRICE * 10 ? `<button class="btn" data-act="ex-junk" data-arg="10">10장 만들기</button> ` : ''}<button class="btn" data-act="ex-junk" data-arg="all" ${jv >= TICKET_PRICE ? '' : 'disabled'}>모두 바꾸기 (${Math.floor(jv / TICKET_PRICE)}장)</button></div>
         <h3>💰 돈으로 사기</h3><p class="dim">도구가 모자라면 티켓을 한 장에 ₽${TICKET_PRICE}에 살 수도 있어요. (가진 돈 ₽${save.money})</p>
         <div class="btns">${[1, 10].map(n => `<button class="btn" data-act="ex-buy" data-arg="${n}" ${save.money >= n * TICKET_PRICE ? '' : 'disabled'}>🎟 ${n}장 사기 (₽${n * TICKET_PRICE})</button>`).join(' ')}</div>
         <h3>♻ 창고의 도구</h3>
-        <p class="dim">🔒을 누르면 그 도구는 교환에 쓰지 않아요. (기술머신·지닌 물건·메가스톤·영양제·구미·이상한사탕·특성캡슐 등 귀한 물건과 쇠가시처럼 겹치는 물건은 처음부터 쓰지 않아요)</p>
-        <div class="store-list">${junkIds().map(id => `<div class="row${junkKept(id) ? ' dim' : ''}">${itemLabel(id)} ×${save.storage[id]}<span class="grow dim tiny">₽${junkPts(id)}씩</span><button class="btn sm${junkKept(id) ? '' : ' ghost'}" data-act="ex-keep" data-arg="${id}">${junkKept(id) ? '🔒 안 씀' : '쓰기'}</button></div>`).join('') || '<p class="dim">창고에 바꿀 수 있는 도구가 없어요.</p>'}</div>`
+        <p class="dim"><b>남길 개수</b>만큼은 티켓에 쓰지 않고 창고에 남겨 둬요 (0이면 모두 쓸 수 있어요). 기술머신·지닌 물건·메가스톤·영양제·구미·이상한사탕·특성캡슐 등 귀한 물건과 쇠가시처럼 겹치는 물건은 처음부터 쓰지 않아요.</p>
+        ${junkIds().length ? `<div class="btns"><button class="btn sm ghost" data-act="ex-leave-all" data-arg="1">모두 남기기</button> <button class="btn sm ghost" data-act="ex-leave-all" data-arg="0">남길 개수 모두 0으로</button></div>` : ''}
+        <div class="store-list">${junkIds().map(id => `<div class="row${junkFree(id) ? '' : ' dim'}">${itemLabel(id)} ×${save.storage[id]}<span class="grow dim tiny">₽${junkPts(id)}씩 · 쓸 수 있는 것 ${junkFree(id)}개 (₽${junkPts(id) * junkFree(id)})</span>
+          <label class="dim tiny">남길 개수 <input type="number" min="0" max="${JUNK_LEAVE_ALL}" step="1" data-jleave="${id}" value="${junkLeave(id)}" style="width:4.2em"></label></div>`).join('') || '<p class="dim">창고에 바꿀 수 있는 도구가 없어요.</p>'}</div>`
       : view === 'trade' ? `<h3>🔁 티켓으로 교환</h3><div class="store-list">${TICKET_TRADES.filter(([id]) => ITEMS[id]).map(([id, c]) => `<div class="row"><div class="grow">${itemLabel(id)}<div class="dim tiny">${esc(ITEMS[id].d)}</div></div><button class="btn sm" data-act="ex-trade" data-arg="${id}" ${tk >= c ? '' : 'disabled'}>🎟 ${c}장</button></div>`).join('')}</div>`
       : view === 'up' ? `<div class="row">${portraitImg(SIG_HOST, 'portrait sm', 'Happy')}<span class="grow"><b>전용 도구 강화</b> <span class="dim">— 크크크… 재료만 가져오면 전용 도구를 단단하게 손봐 주지. 한 번 강화하면 같은 도구는 모두 강해져. (최대 +${SIG_UP_MAX})</span></span></div>
         <input class="sig-q" placeholder="포켓몬·도구 이름으로 찾기" autocomplete="off" style="width:100%;margin:6px 0" oninput="const v=this.value.trim().toLowerCase();this.nextElementSibling.querySelectorAll('[data-s]').forEach(r=>r.hidden=!!v&&!r.dataset.s.includes(v))">
@@ -1450,7 +1484,7 @@ const Game = (() => {
         <h3>나오는 물건과 확률</h3><table class="help">${GACHA_TABLE.map(([w, l]) => `<tr><td>${pct(w)}</td><td>${l[0] === '@tm' ? '💿 아무 기술머신 하나' : l[0] === '@mega' ? `💠 메가스톤 (${ITEMS[save.gachaMega] ? `${Gfx.iconHtml(save.gachaMega)} ${esc(ITEMS[save.gachaMega].n)}` : '나오면 원하는 것을 고른다'})` : l.filter(x => ITEMS[x]).map(x => `${ITEMS[x].icon}${esc(ITEMS[x].n)}`).join(' · ')}${l.length > 1 ? ' <span class="dim">(중 하나)</span>' : ''}</td></tr>`).join('')}</table>`
       : `<div class="row">${portraitImg(SIG_HOST, 'portrait sm', 'Happy')}<span class="grow"><b>삐딱구리 트레이드</b> <span class="dim">— 크크크… 티켓을 모아 오면 특별한 전용 도구와 바꿔 주지. 🤝 표시는 영입한 포켓몬이 쓸 수 있는 도구야.</span></span></div>
         <input class="sig-q" placeholder="포켓몬·도구 이름으로 찾기" autocomplete="off" style="width:100%;margin:6px 0" oninput="const v=this.value.trim().toLowerCase();this.nextElementSibling.querySelectorAll('[data-s]').forEach(r=>r.hidden=!!v&&!r.dataset.s.includes(v))">
-        <div class="store-list">${SIG_TRADE_ITEMS.filter(id => ITEMS[id]).sort((a, b) => ITEMS[a].hold.only.some(s => mine.has(s)) ? -1 : ITEMS[b].hold.only.some(s => mine.has(s)) ? 1 : 0).map(id => { const ok = ITEMS[id].hold.only.some(s => mine.has(s)); return `<div class="row" data-s="${esc((ITEMS[id].n + ' ' + (ITEMS[id].who || '')).toLowerCase())}"><div class="grow">${itemLabel(id)}${ok ? ' 🤝' : ''}<div class="dim tiny">${esc(ITEMS[id].d)}${ownedCount(id) ? ` · 가지고 있음 ${ownedCount(id)}` : ''}</div></div><button class="btn sm" data-act="ex-sig" data-arg="${id}" ${tk >= SIG_TICKETS ? '' : 'disabled'}>🎟 ${SIG_TICKETS}장</button></div>`; }).join('')}</div>`;
+        <div class="store-list">${SIG_TRADE_ITEMS.filter(id => ITEMS[id]).sort((a, b) => ITEMS[a].hold.only.some(s => mine.has(s)) ? -1 : ITEMS[b].hold.only.some(s => mine.has(s)) ? 1 : 0).map(id => { const ok = ITEMS[id].hold.only.some(s => mine.has(s)); return `<div class="row" data-s="${esc((ITEMS[id].n + ' ' + (ITEMS[id].who || '')).toLowerCase())}"><div class="grow">${itemLabel(id)}${ok ? ' 🤝' : ''}<div class="dim tiny">${esc(ITEMS[id].d)}${ownedCount(id) ? ` · 가지고 있음 ${ownedCount(id)}` : ''}</div></div><button class="btn sm" data-act="ex-sig" data-arg="${id}" ${tk >= sigTickets(id) ? '' : 'disabled'}>🎟 ${sigTickets(id)}장</button></div>`; }).join('')}</div>`;
     return `<div class="row exch-row"><span class="grow">🎟 가진 티켓 <b>${tk}</b>장 · 바꿀 수 있는 도구 값 <b>₽${jv}</b> <span class="dim">(창고 기준 · ₽${TICKET_PRICE}어치 = 티켓 1장)</span></span></div>
       <div class="btns">${tabs}</div>${body}`;
   }
@@ -1604,6 +1638,17 @@ const Game = (() => {
         bind(el, refresh);
       } });
   }
+  // 창 안의 검색 칸: 글자를 칠 때마다 검색 결과(data-sres)만 다시 그린다
+  //  (예전에는 검색 칸까지 새로 만들어서 한글을 조합하던 글자가 끊겨 이상하게 들어갔다)
+  function searchInput(el, sel, set, body) {
+    el.addEventListener('input', e => {
+      if (!e.target.matches(sel)) return;
+      set(e.target.value.trim().toLowerCase());
+      const tmp = document.createElement('div'); tmp.innerHTML = body();
+      const from = tmp.querySelector('[data-sres]'), to = el.querySelector('[data-sres]');
+      if (from && to) to.replaceWith(from);
+    });
+  }
   // 💿 기술머신 보관함: 이름 검색, 꺼내기·팔기
   function tmStoreDialog() {
     let q = '';
@@ -1612,10 +1657,10 @@ const Game = (() => {
       const shown = tms.filter(id => !q || ITEMS[id].n.toLowerCase().includes(q));
       return `<p class="dim">기술머신은 창고 칸을 차지하지 않아요. 가방 ${bagSlots()}/${bagMax()}칸</p>
         <input data-tmq="1" placeholder="기술 이름 검색" value="${esc(q)}" autocomplete="off" style="width:100%;margin-bottom:6px">
-        ${shown.map(id => `<div class="row">${itemLabel(id)} ×${save.storage[id]}<span class="grow"></span>
+        <div data-sres>${shown.map(id => `<div class="row">${itemLabel(id)} ×${save.storage[id]}<span class="grow"></span>
           <button class="btn sm ghost" data-dexmove="${ITEMS[id].mv}" title="기술 정보와 배우는 포켓몬">ℹ</button>
           <button class="btn sm" data-tmw="${id}" ${bagSlots() >= bagMax() ? 'disabled' : ''}>꺼내기</button>
-          <button class="btn sm ghost" data-tms="${id}" title="하나 판다 (상점 탭에서 되살 수 있음)">₽${sellValue({ id, n: 1 })} 팔기</button></div>`).join('') || `<p class="dim">${tms.length ? '찾는 기술머신이 없습니다.' : '보관한 기술머신이 없습니다.'}</p>`}`;
+          <button class="btn sm ghost" data-tms="${id}" title="하나 판다 (상점 탭에서 되살 수 있음)">₽${sellValue({ id, n: 1 })} 팔기</button></div>`).join('') || `<p class="dim">${tms.length ? '찾는 기술머신이 없습니다.' : '보관한 기술머신이 없습니다.'}</p>`}</div>`;
     };
     storeDialog('💿 기술머신 보관함', body, (el, refresh) => {
       el.addEventListener('click', async e => {
@@ -1623,11 +1668,7 @@ const Game = (() => {
         if (w) { await onAction('withdraw', w.dataset.tmw); refresh(); }
         if (s) { await onAction('sell-store', s.dataset.tms); refresh(); }
       });
-      el.addEventListener('input', e => {
-        if (!e.target.dataset.tmq) return;
-        q = e.target.value.trim().toLowerCase(); const pos = e.target.selectionStart;
-        el.innerHTML = body(); const inp = el.querySelector('[data-tmq]'); inp.focus(); inp.setSelectionRange(pos, pos);
-      });
+      searchInput(el, '[data-tmq]', v => { q = v; }, body);
     });
   }
   // 🔁 자동 판매 창 (v0.99): 분류 탭(일반·지닌 물건·기술머신·전용·메가스톤) + 이름 검색으로 찾아서 켠다. 켜 둔 목록도 같은 분류로 거른다
@@ -1649,11 +1690,7 @@ const Game = (() => {
         }
       });
       el.addEventListener('change', e => { if (e.target.dataset.askeep) { setAutoSellKeep(e.target.dataset.askeep, e.target.value); refresh(); } });
-      el.addEventListener('input', e => {
-        if (!e.target.dataset.asq) return;
-        asQ = e.target.value.trim().toLowerCase(); const pos = e.target.selectionStart;
-        el.innerHTML = autoSellBox(); const inp = el.querySelector('[data-asq]'); inp.focus(); inp.setSelectionRange(pos, pos);
-      });
+      searchInput(el, '[data-asq]', v => { asQ = v; }, autoSellBox);
     }, sellStoredAutoSell);   // 창을 닫을 때 창고에 있던 것 중 남길 개수를 넘는 것을 판다
   }
   function sellStoredAutoSell() {
@@ -1681,14 +1718,14 @@ const Game = (() => {
     return `<div class="autosell"><p class="dim">고른 아이템은 창고에 들어올 때(맡기기·의뢰 보상 등) 넣지 않고 바로 팔아요. <b>남길 개수</b>만큼은 창고에 넣고 넘치는 것만 팔아요 (0이면 모두 판매). 창고에 이미 있던 것은 이 창을 닫을 때 팔아요. 직접 사거나 되산 물건은 팔지 않아요. 판 물건은 상점 탭에서 되살 수 있어요.</p>
       ${tabs}
       <input data-asq="1" placeholder="아이템 이름 검색" value="${esc(asQ)}" autocomplete="off" style="width:100%;margin:6px 0">
-      <h3>✅ 자동 판매 중 <span class="dim">${shownOn.length}${shownOn.length !== list.length ? ` / 전체 ${list.length}` : ''}개</span></h3>
+      <div data-sres><h3>✅ 자동 판매 중 <span class="dim">${shownOn.length}${shownOn.length !== list.length ? ` / 전체 ${list.length}` : ''}개</span></h3>
       ${shownOn.map(id => `<div class="row">${itemLabel(id)}<span class="grow dim">창고 ${save.storage[id] || 0}개 · ${sellTxt(id)}</span>
         <label class="dim tiny">남길 개수 <input type="number" min="0" max="999" step="1" data-askeep="${id}" value="${autoSellKeep(id)}" style="width:4.2em"></label>
         <button class="btn sm ghost" data-asoff="${id}">끄기</button></div>`).join('') || '<p class="dim">이 분류에 켜 둔 아이템이 없어요.</p>'}
       <h3>＋ 켜기 <span class="dim">${cands.length}종${cands.length > AS_SHOW ? ` 중 ${AS_SHOW}종 (검색으로 좁혀 보세요)` : ''}</span>
         ${haveN ? `<button class="btn sm ghost" data-asallon="1">창고에 있는 ${haveN}종 모두 켜기</button>` : ''}</h3>
       ${cands.slice(0, AS_SHOW).map(id => `<div class="row">${itemLabel(id)}<span class="grow dim">${(save.storage[id] || 0) ? `창고 ${save.storage[id]}개 · ` : ''}${sellTxt(id)}</span>
-        <button class="btn sm" data-ason="${id}">켜기</button></div>`).join('') || '<p class="dim">찾는 아이템이 없어요.</p>'}</div>`;
+        <button class="btn sm" data-ason="${id}">켜기</button></div>`).join('') || '<p class="dim">찾는 아이템이 없어요.</p>'}</div></div>`;
   }
   let autoSoldMoney = 0, autoSoldTimer = null;
   // 창고에 맡긴다. 자동 판매 아이템이면 대신 판다 (true: 팔았음)
@@ -2150,10 +2187,17 @@ const Game = (() => {
       case 'install': return installApp();
       case 'nick': return nickDialog(+arg || save.current);
       case 'ex-view': exView = arg; break;
-      case 'ex-keep': save.junkKeep = junkKept(arg) ? save.junkKeep.filter(x => x !== arg) : [...(save.junkKeep || []), arg]; break;
-      case 'ex-junk': { const n = arg === 'all' ? Math.floor(junkValue() / TICKET_PRICE) : 1; if (n && junkToTickets(n)) { Sound.play('achieve'); UI.toast(`🎟 티켓 ${n}장을 받았어요!`); } break; }
+      case 'ex-leave-all': save.junkLeave = +arg ? Object.fromEntries(junkIds().map(id => [id, JUNK_LEAVE_ALL])) : {}; break;
+      case 'ex-junk': {
+        const n = arg === 'all' ? Math.floor(junkValue() / TICKET_PRICE) : +arg || 1, plan = junkPlan(n);
+        if (!plan) return;
+        if (n > 1 && !await UI.confirm('♻ 티켓 만들기', `<p>티켓 <b>${n}장</b>을 만들려고 이 도구들을 써요.</p><p>${junkUseText(plan.use)}</p>${plan.left ? `<p class="dim">넘친 값 ₽${plan.left}은 다음 티켓에 쓰도록 남겨 둬요.</p>` : ''}`, '바꾼다', '그만둔다')) return;
+        const done = junkToTickets(n);
+        if (done) { Sound.play('achieve'); UI.toast(`🎟 티켓 ${n}장을 받았어요! (${junkUseText(done.use)})`); }
+        break;
+      }
       case 'ex-trade': case 'ex-sig': {
-        const c = act === 'ex-sig' ? (SIG_TRADE_ITEMS.includes(arg) ? SIG_TICKETS : 0) : (TICKET_TRADES.find(x => x[0] === arg) || [])[1];
+        const c = act === 'ex-sig' ? (SIG_TRADE_ITEMS.includes(arg) ? sigTickets(arg) : 0) : (TICKET_TRADES.find(x => x[0] === arg) || [])[1];
         if (!c || !ITEMS[arg] || (save.tickets || 0) < c) return;
         save.tickets -= c; storeKeep(arg); Sound.play('achieve'); UI.toast(`${ITEMS[arg].icon} ${jo(ITEMS[arg].n, '과')} 바꿨어요! (창고로)`); break;
       }
@@ -2901,10 +2945,13 @@ const Game = (() => {
   //  처음에는 자동으로 들어가던 4개(마지막 4개)를 골라 두고, 고른 조합은 포켓몬마다 기억한다 (ch.rogueMoves)
   //  결과: 고른 기술 배열 / null (고를 필요 없음) / false (그만둔다)
   function pickRogueMoves(sp) {
-    const ch = save.roster[sp], pool = learnableUpTo(sp, ROGUE_LEVEL).filter(m => DATA.moves[m]);
-    if (pool.length <= 4) return Promise.resolve(null);
+    const ch = save.roster[sp];
+    // 골라 둔 모습(버드렉스 기수 모습 등)이 있으면 그 모습이 배우는 기술로 (v0.100: 예전에는 원래 모습의 기술만 가져갔다)
+    const lsp = ch.form && DATA.species[ch.form]?.f?.[0] === +sp ? ch.form : sp;
+    const pool = learnableUpTo(lsp, ROGUE_LEVEL).filter(m => DATA.moves[m]);
+    if (pool.length <= 4) return Promise.resolve(lsp !== sp ? pool : null);
     const saved = (ch.rogueMoves || []).filter(m => pool.includes(m));
-    let sel = saved.length ? saved : defaultMoves(sp, ROGUE_LEVEL).filter(m => pool.includes(m));
+    let sel = saved.length ? saved : defaultMoves(lsp, ROGUE_LEVEL).filter(m => pool.includes(m));
     return new Promise(res => {
       const show = focus => UI.open({ title: `📘 ${esc(spName(sp))} Lv${ROGUE_LEVEL} — 가져갈 기술 4개`, wide: true,
         html: `<p class="dim">이 레벨까지 배우는 기술이 ${pool.length}개라 4개만 가져갈 수 있어요. 눌러서 넣고 빼세요. (고른 조합은 다음 로그라이크에도 기억해요)</p>`,
@@ -3690,7 +3737,7 @@ const Game = (() => {
   // 상점 기술머신 분류 (다음 진열부터)
   function setTmFocus(v) { save.tmFocus = v || null; persist(); UI.toast(v ? '다음 진열부터 그 분류의 기술머신만 나와요. (🔄 새로고침하거나 다음 날)' : '기술머신 분류를 고르지 않았어요.'); }
   function setMissionFocus(id) { save.missionFocus = id || null; persist(); UI.toast(id ? `${dungeonById(id).n}의 의뢰가 더 자주 붙어요. (다음 새 의뢰부터)` : '자주 뜨는 지역을 해제했어요.'); }
-  return { missionText, eventList, playEvent, persist, rescueNow, rescueDialog, poke: () => { lastInput = Date.now(); if (idle) wakeIdle(); }, missionAlert, logSale, setTmFocus, shinyOk, setMissionFocus, hasClears, medalSection, dexMedals, askUpdate, recruit, unlockShiny, showMissions, importSave, noteShiny, boot, endRun, saveRunSnapshot, dungeonMenu, setSetting, renderTown, get save() { return save; }, setTab(t) { tab = t; renderTown(); } };
+  return { setJunkLeave, missionText, eventList, playEvent, persist, rescueNow, rescueDialog, poke: () => { lastInput = Date.now(); if (idle) wakeIdle(); }, missionAlert, logSale, setTmFocus, shinyOk, setMissionFocus, hasClears, medalSection, dexMedals, askUpdate, recruit, unlockShiny, showMissions, importSave, noteShiny, boot, endRun, saveRunSnapshot, dungeonMenu, setSetting, renderTown, get save() { return save; }, setTab(t) { tab = t; renderTown(); } };
 })();
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -3720,6 +3767,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if (e.target.dataset.setnum) { Game.setSetting(e.target.dataset.setnum, +e.target.value); Sound.play('menu'); }
     if (e.target.dataset.mfocus) { Game.setMissionFocus(e.target.value); }
     if (e.target.dataset.tmfocus) Game.setTmFocus(e.target.value);
+    if (e.target.dataset.jleave) Game.setJunkLeave(e.target.dataset.jleave, e.target.value);
     if (e.target.classList.contains('tm-only')) filterTMs();
     if (e.target.classList.contains('mission-sort')) { Game.save.missionSort = e.target.value || null; Game.renderTown(); }
     if (e.target.classList.contains('store-filter')) { Game.save.storageFilter = e.target.value; Game.renderTown(); }

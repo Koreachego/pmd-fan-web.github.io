@@ -138,7 +138,7 @@ function weatherRaw() {
 const grounded = c => !!c && !(c.types || []).includes(3) && !abilityOf(c).levitate;
 const terrainNow = () => CUR_TERRAIN;
 const terrainOn = (c, t) => CUR_TERRAIN === t && grounded(c);
-const TERRAIN_PULSE = 805, EXPANDING_FORCE = 797, MISTY_EXPLOSION = 802, QUAKE_MOVES = [89, 523, 222];
+const TERRAIN_PULSE = 805, EXPANDING_FORCE = 797, MISTY_EXPLOSION = 802, RISING_VOLTAGE = 804, QUAKE_MOVES = [89, 523, 222];
 function weatherNow() {
   if (!CUR_WEATHER) return null;
   if (WEATHERS[CUR_WEATHER] && WEATHERS[CUR_WEATHER].base) return weatherRaw() && WEATHERS[CUR_WEATHER].base;
@@ -237,6 +237,7 @@ function powerMul(att, def, move, mt, A) {
     if (move.id === TERRAIN_PULSE && grounded(att)) m *= 2;   // 대지의파동: 필드가 있으면 위력 2배 (타입도 필드 타입, moveType)
     if (move.id === EXPANDING_FORCE && CUR_TERRAIN === 'psychic' && grounded(att)) m *= 1.5;
     if (move.id === MISTY_EXPLOSION && CUR_TERRAIN === 'misty' && grounded(att)) m *= 1.5;
+    if (move.id === RISING_VOLTAGE && CUR_TERRAIN === 'electric' && def && grounded(def)) m *= 2;   // 라이징볼트 (v0.101): 쓰는 쪽이 아니라 맞는 상대가 땅에 있으면 위력 2배
   }
   return m;
 }

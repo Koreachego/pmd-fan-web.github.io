@@ -223,7 +223,7 @@ ab_(238, { contact: { st: 7, ch: -1 }, dungeon: '접촉한 적의 명중률을 �
 ab_(295, { contact: { ail: 'psn', c: 30 }, dungeon: '접촉한 적을 30% 확률로 독 상태로 만든다.' });
 ab_(124, { contact: { item: 10 }, dungeon: '접촉 공격을 받으면 10% 확률로 아이템을 줍는다.' });
 ab_(170, { magician: true, dungeon: '접촉 공격이 맞으면 10% 확률로 아이템을 얻는다.' });
-ab_(106, { aftermath: true });
+ab_(106, { aftermath: 'contact', dungeon: '접촉 기술로 쓰러지면 쓰러뜨린 상대에게 그 상대의 최대 HP 1/4 데미지를 준다.' });   // 유폭: 접촉 기술일 때만 (v0.100)
 ab_(64, { liquidOoze: true });
 
 // ── 약점이 있는 특성 ──

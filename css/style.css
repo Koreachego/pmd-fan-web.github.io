@@ -895,3 +895,8 @@ body.phone-land #auto-ind, body.phone-land #wind-ind { left: 50%; transform: tra
 .store-list .row { flex-wrap: wrap; }
 .store-list .row .store-name { min-width: 7em; }
 .store-list .row > .btn { flex-shrink: 0; }
+/* 티켓 만들기: 다음 티켓까지 모은 값 */
+.junk-bar { height: 8px; margin: 4px 0 6px; border-radius: 4px; background: #ffffff1a; overflow: hidden; }
+.junk-bar i { display: block; height: 100%; background: linear-gradient(90deg, #f6c445, #ffe58a); }
+/* hidden 속성은 늘 숨긴다 (.row 등의 display:flex가 덮어써서 검색해도 줄이 그대로 보이던 문제) */
+[hidden] { display: none !important; }

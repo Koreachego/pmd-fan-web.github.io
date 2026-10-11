@@ -850,6 +850,7 @@ const Dungeon = (() => {
     let move = slot < 0 ? NORMAL_ATTACK : DATA.moves[mid];
     const wbT = { sun: 10, rain: 11, sand: 6, snow: 15 }[weatherNow()];
     if (R.weatherBall && wbT) move = { ...move, t: wbT, p: 100 };
+    if (mid === EXPANDING_FORCE && CUR_TERRAIN === 'psychic' && grounded(user)) move = { ...move, r: 'r' };   // 와이드포스: 사이코필드에서는 주변(3칸 안)의 모든 상대에게 (위력 80 → 120은 powerMul)
     if (slot >= 0 && !opts.free) {
       if (party(user) && Math.random() < masteryFree(user.sp, mid)) log(`${jo(nm(user), '은')} PP를 쓰지 않았다! (숙련도)`, T.base);
       else user.moves[slot].pp--;
@@ -1013,6 +1014,7 @@ const Dungeon = (() => {
     if (tgt.hp <= 0) return;
     if (tgt.protecting && tgt !== user) { log(`${jo(nm(tgt), '은')} 공격으로부터 몸을 지켰다!`, at); popup(tgt, '방어', '#9fd8ff', at); user.lastMissed = true; return; }
     if (tgt.charging && tgt.charging.invuln) { log(`${nm(tgt)}에게 공격이 닿지 않았다!`, at); user.lastMissed = true; return; }
+    tgt.lastHitContact = isContact(move) && !abilityOf(user).longReach;   // 유폭: 마지막으로 맞은 기술이 접촉 기술인지
     if (terrainOn(tgt, 'psychic') && tgt !== user && hostileTo(user, tgt) && PRIORITY_MOVES.includes(move.id)) { log(`${jo(nm(tgt), '은')} 사이코필드에 지켜지고 있다!`, at); user.lastMissed = true; return; }   // 사이코필드: 선제기를 막는다
     const A = abilityOf(user), Dd = defAbility(user, tgt), mt = moveType(user, move);
     // 흡수·무효 특성
@@ -1398,7 +1400,7 @@ const Dungeon = (() => {
       const sa = abilityOf(src);
       if (sa.onKO) statChange(src, sa.onKO === 'best' ? (src.atk >= src.spa ? 2 : 4) : sa.onKO === 'spa' ? 4 : 2, 1, at, src);
     }
-    if (src && abilityOf(c).aftermath && src.hp > 0) { abLog(c, `${jo(nm(src), '은')} 폭발에 휘말렸다!`, at); damage(src, pctDmg(src, 1 / 4), c, at); }
+    if (src && abilityOf(c).aftermath && src.hp > 0 && (abilityOf(c).aftermath !== 'contact' || c.lastHitContact)) { abLog(c, `${jo(nm(src), '은')} 폭발에 휘말렸다!`, at); damage(src, pctDmg(src, 1 / 4), c, at); }   // 유폭은 접촉 기술로 쓰러졌을 때만, 내용물분출은 어떤 공격이든 (v0.100)
     if (byParty) {
       const expOf = m => Math.floor(expGain(c, m.lv) * (c.outlaw || c.boss ? BOSS_EXP_MUL : 1) * (c.shiny ? 2 : 1) * (heldOf(m).expMul || 1) * (run.mode === 'rogue' ? ROGUE_EXP_MUL : 1));
       gainExp(expOf(P()), at);
@@ -1752,12 +1754,12 @@ const Dungeon = (() => {
         const cur = wxBase(D.weather), lock = D.wxLock && D.wxLock.hp > 0 && !D.wxLock.dead;
         if (foe && !lock && cur !== R.setWx) {
           const gain = wxValue(R.setWx, team) - (cur ? wxValue(cur, team) : 0);
-          if (wxValue(R.setWx, team) > 0 && gain >= 1) s = sup ? 80 : Math.min(boss ? 80 : 50, (boss ? 30 : 15) + gain * 10);
+          if (wxValue(R.setWx, team) > 0 && gain >= 1) s = sup ? 80 : Math.min(boss ? 80 : 60, (boss ? 45 : 30) + gain * 10);
         }
       } else if (R.setTerrain) {   // 필드: 싸우는 중이고 아직 아니면, 그 타입 공격 기술을 가진 같은 편이 있으면 (미스트필드는 상태이상을 막으니 늘)
         const T = TERRAINS[R.setTerrain];
         const useful = R.setTerrain === 'misty' || who.some(m => m.moves.some(x => DATA.moves[x.id] && DATA.moves[x.id].p > 0 && DATA.moves[x.id].t === T.type));
-        if (foe && (D.terrain !== R.setTerrain || D.terrainT <= TERRAIN_TURNS / 3) && useful) s = sup ? 75 : boss ? 40 : 15;   // 끝나 가면 다시 깐다
+        if (foe && (D.terrain !== R.setTerrain || D.terrainT <= TERRAIN_TURNS / 3) && useful) s = sup ? 75 : boss ? 55 : 35;   // 끝나 가면 다시 깐다
       } else if (R.screen) {   // 벽: 싸우는 중이고 아직 없으면 (오로라베일은 설경일 때만)
         if (foe && (!R.needWx || weatherNow() === R.needWx) && who.some(m => screenKeys(R).some(k => (m[k] || 0) <= (sup ? 2 : 0)))) s = sup ? 85 : boss ? 50 : 15;   // 지원 위주: 2턴 남으면 미리 다시
       } else if (o.m.sc && o.m.sc.some(([, ch]) => ch > 0) && !o.m.ss) {   // 능력 올리기: 아직 덜 오른 대상이 있으면
@@ -1823,6 +1825,17 @@ const Dungeon = (() => {
     if (e.moveOnly && sees && dist <= 1) return;   // 화난 켈리몬의 두 번째 이동: 붙었으면 멈춘다 (공격은 한 턴에 한 번)
     if (!e.ally && e.item && !e.moveOnly && enemyUseItem(e, p, sees, dist, dx, dy)) return;
     if (e.ally && !e.moveOnly && sees && dist <= 6) { const sup = allySupport(e, p); if (sup) { useMove(e, sup.i, e.dir); return; } }   // 동료: 회복·능력 올리기·벽
+    // 적의 날씨·필드 기술 (v0.101): 예전에는 붙어 있을 때 다른 변화 기술과 섞여 가끔만 썼다. 상대가 보이면 떨어져 있어도, 자기에게 득이 될 때 쓴다
+    if (!e.ally && !e.moveOnly && sees && dist <= 5) {
+      const lock = D.wxLock && D.wxLock.hp > 0 && !D.wxLock.dead;
+      const fx = usable.filter(o => {
+        const R = MOVE_RULES[o.id] || {};
+        if (R.setWx) return !lock && worthUsing(e, p, o.m) && wxValue(R.setWx, [e]) > 0;
+        if (R.setTerrain) return worthUsing(e, p, o.m) && (R.setTerrain === 'misty' || e.moves.some(x => DATA.moves[x.id] && DATA.moves[x.id].p > 0 && DATA.moves[x.id].t === TERRAINS[R.setTerrain].type));
+        return false;
+      });
+      if (fx.length && Math.random() < (e.boss ? 0.5 : 0.3) * nerve) { useMove(e, pick(fx).i, e.dir); return; }
+    }
     // 상태 이상 기술 (최면술·다크홀·전기자석파·맹독 등): 아직 상태 이상이 아닌 상대가 닿는 곳에 있으면 먼저 건다 (보스에게는 동료가 더 자주)
     if (sees && !e.moveOnly && !p.status) {
       const aligned = dx === 0 || dy === 0 || Math.abs(dx) === Math.abs(dy);
@@ -3207,6 +3220,9 @@ const Dungeon = (() => {
         ctx.fillStyle = '#ffe066'; ctx.fillText('₽' + it.price, cx, cy + 9);
       }
     }
+    // 방향 전환 중 (v0.101): 리더 둘레에 격자를 깔고 바라보는 칸을 표시 (키보드 Shift·컨트롤러·터치 ↻)
+    const turning = turnHeld.size || turnSrc.size;
+    if (turning) drawTurnGrid(p, t, ox, oy);
     // 포켓몬
     const list = [...D.mons.filter(m => seen(m) || (m.tween && t < m.tween.start + m.tween.dur && D.visible[idx(m.tween.fx, m.tween.fy)])), ...D.corpses, p];
     list.sort((a, b) => vpos(a, t).y - vpos(b, t).y);
@@ -3409,6 +3425,21 @@ const Dungeon = (() => {
   const DIAG_WAIT = 70;
   const heldMove = new Map();   // 눌려 있는 상하좌우 키 → 방향
   const turnHeld = new Set();   // 눌려 있는 '방향만 바꾸기' 키 (기본 Shift)
+  const turnSrc = new Set();    // 방향 전환 중인 다른 조작 (dpad·vp: 터치 ↻, gp: 컨트롤러) — 격자를 보여 준다
+  const TURN_GRID_R = 2;        // 격자 반경 (칸)
+  function drawTurnGrid(p, t, ox, oy) {
+    const v = vpos(p, t), [dx, dy] = DIRS[p.dir];
+    ctx.save();
+    for (let yy = -TURN_GRID_R; yy <= TURN_GRID_R; yy++) for (let xx = -TURN_GRID_R; xx <= TURN_GRID_R; xx++) {
+      const gx = p.x + xx, gy = p.y + yy, front = xx === dx && yy === dy;
+      if (!openAt(gx, gy) && !front) continue;   // 바라보는 칸은 벽이어도 표시 (어느 쪽을 보는지 알 수 있게)
+      const sx = Math.round((v.x + xx) * TILE - ox), sy = Math.round((v.y + yy) * TILE - oy);
+      if (front) { ctx.fillStyle = 'rgba(255,70,40,0.38)'; ctx.fillRect(sx, sy, TILE, TILE); }
+      ctx.strokeStyle = front ? '#ffffff' : 'rgba(255,255,255,0.4)'; ctx.lineWidth = front ? 2 : 1;
+      ctx.strokeRect(sx + (front ? 1 : 0.5), sy + (front ? 1 : 0.5), TILE - (front ? 2 : 1), TILE - (front ? 2 : 1));
+    }
+    ctx.restore();
+  }
   let moveTimer = null, moveFallback = null;
   const keyAct = code => keyActionMap((Game.save && Game.save.settings && Game.save.settings.keys) || {})[code];
   function heldDir() {
@@ -3729,7 +3760,7 @@ const Dungeon = (() => {
     mini = document.getElementById('minimap'); mctx = mini.getContext('2d');
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
-    window.addEventListener('blur', () => { heldMove.clear(); turnHeld.clear(); });
+    window.addEventListener('blur', () => { heldMove.clear(); turnHeld.clear(); turnSrc.delete('gp'); });
     canvas.addEventListener('click', onClick);
     canvas.addEventListener('contextmenu', e => { if (!D || UI.isOpen()) return; e.preventDefault(); lookAt(e); });   // 우클릭: 조사
     document.getElementById('log').addEventListener('click', () => { if (D && !UI.isOpen()) { stopAuto(); showLog(); } });
@@ -3793,7 +3824,7 @@ const Dungeon = (() => {
     const pad = document.getElementById('dpad'); if (!pad) return;
     let timer = null, dir = null, face = false;
     const faceBtn = pad.querySelector('[data-face]');
-    const setFace = v => { face = v; faceBtn.classList.toggle('on', v); };
+    const setFace = v => { face = v; faceBtn.classList.toggle('on', v); if (v) turnSrc.add('dpad'); else turnSrc.delete('dpad'); };
     const fire = () => {
       if (!D || D.dead || UI.isOpen() || bigMap || dir == null || busy()) return;
       if (face) { setFace(false); act({ t: 'face', dir }); stop(); return; }
@@ -3890,7 +3921,7 @@ const Dungeon = (() => {
     const vp = document.getElementById('vpad'); if (!vp) return;
     const stick = vp.querySelector('.vp-stick'), base = vp.querySelector('.vp-base'), thumb = vp.querySelector('.vp-thumb'), faceBtn = vp.querySelector('.vp-face');
     let pid = null, dir = null, timer = null, face = false, editing = false;
-    const setFace = v => { face = v; faceBtn.classList.toggle('on', v); };
+    const setFace = v => { face = v; faceBtn.classList.toggle('on', v); if (v) turnSrc.add('vp'); else turnSrc.delete('vp'); };
     // ↻ 방향만 바꾸기: 조이스틱을 누르고 있는 동안 계속 (방향을 돌리면 그쪽으로 돌아서기만), 손을 떼면 풀린다
     let faceHeld = false;
     const fire = (changed) => {
@@ -4026,6 +4057,7 @@ const Dungeon = (() => {
       const ex = gpExtra(), exIdx = { lb: GP.LB, rb: GP.RB, lt: GP.LT, rt: GP.RT, back: GP.BACK, start: GP.START };
       const holdDown = act => GP_EXTRA.some(([k]) => ex[k] === act && down(exIdx[k]));
       const skillMode = !UI.isOpen() && !!D && !bigMap && holdDown('skill');
+      if (holdDown('face') && !UI.isOpen()) turnSrc.add('gp'); else turnSrc.delete('gp');   // 방향 전환 격자
       if (document.body.classList.contains('gp-skill') !== skillMode) document.body.classList.toggle('gp-skill', skillMode);   // 기술 칸에 A·B·X·Y 표시
       if (UI.isOpen()) {
         // 창: 위아래로 고르기 (누르고 있으면 반복), A 확인, B 닫기

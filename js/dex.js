@@ -21,13 +21,15 @@ const Dex = (() => {
     const state = id => (Progress.beatCount(id) ? 2 : Progress.isSeen(id) ? 1 : 0);
     // 영입: 캐릭터 목록에 있는 포켓몬과 그 진화 전 모습 (진화시키면 진화 전 모습은 목록에서 빠지지만 도감에는 영입한 것으로)
     const ownSet = new Set(Game.save ? Object.keys(Game.save.roster).flatMap(k => [+k, ...preEvos(+k)]) : []);
-    const own = id => ownSet.has(+id);
+    // 영입할 수 없는 포켓몬(NO_RECRUIT: 무한다이맥스)은 영입 도감에서 뺀다 (만난·쓰러뜨린 기록은 그대로)
+    const noRec = id => NO_RECRUIT.includes(+id), recIds = ids.filter(id => !noRec(id));
+    const own = id => !noRec(id) && ownSet.has(+id);
     // 이로치: 그림이 있는지(sh) / 내가 얻었는지 (그 포켓몬이나 진화 계열의 이로치를 쓰러뜨리거나 영입하면 고를 수 있다)
     const shinyMine = id => !!(Game.save && DATA.species[id].sh && Game.shinyOk(+id));
     return `<div class="dex-rate">
         <div>👁 만난 포켓몬 <b>${cnt.seen}</b> / ${cnt.total} <span class="dim">(${pct(cnt.seen)}%)</span><span class="bar"><i style="width:${pct(cnt.seen)}%;background:#6cf"></i></span></div>
         <div>⚔ 쓰러뜨린 포켓몬 <b>${cnt.beaten}</b> / ${cnt.total} <span class="dim">(${pct(cnt.beaten)}%)</span><span class="bar"><i style="width:${pct(cnt.beaten)}%;background:#f58a42"></i></span></div>
-        ${Game.save ? (() => { const n = ids.filter(own).length; return `<div>🤝 영입한 포켓몬 <b>${n}</b> / ${cnt.total} <span class="dim">(${pct(n)}%)</span><span class="bar"><i style="width:${pct(n)}%;background:#7fd67f"></i></span></div>`; })() : ''}</div>
+        ${Game.save ? (() => { const n = recIds.filter(own).length, rp = (n / recIds.length * 100).toFixed(1); return `<div>🤝 영입한 포켓몬 <b>${n}</b> / ${recIds.length} <span class="dim">(${rp}%)</span><span class="bar"><i style="width:${rp}%;background:#7fd67f"></i></span></div>`; })() : ''}</div>
       <div class="picker-bar"><input class="dex-q" placeholder="이름 / 영어 / 번호 검색" autocomplete="off">
       <select class="dex-g"><option value="">전체 세대</option>${gens.map(g => `<option value="${g}">${g}세대</option>`).join('')}</select>
       <select class="dex-t"><option value="">전체 타입</option>${DATA.types.map((t, i) => `<option value="${i + 1}">${t}</option>`).join('')}</select>
@@ -36,7 +38,7 @@ const Dex = (() => {
       <span class="dim dex-count"></span></div>
       ${(() => { medals = Game.save ? Game.dexMedals() : {}; return ''; })()}
       <div class="picker dex-grid">${ids.map(id => { const d = DATA.species[id], st = state(id), md = medals[id] || ''; return `<button class="pk dex-item${st ? '' : ' unseen'}" data-dexpoke="${id}"
-        data-s="${esc((d.n + ' ' + d.e + ' ' + dexNo(id) + ' ' + id).toLowerCase())}" data-g="${d.g}" data-t="${d.t.join(',')}" data-k="${pokeClass(id)}" data-c="${st}" data-r="${own(id) ? 1 : ''}" data-sh="${!d.sh ? 'x' : shinyMine(id) ? 'y' : 'n'}">
+        data-s="${esc((d.n + ' ' + d.e + ' ' + dexNo(id) + ' ' + id).toLowerCase())}" data-g="${d.g}" data-t="${d.t.join(',')}" data-k="${pokeClass(id)}" data-c="${st}" data-r="${own(id) ? 1 : noRec(id) ? 'x' : ''}" data-sh="${!d.sh ? 'x' : shinyMine(id) ? 'y' : 'n'}">
         ${portraitImg(id, 'portrait sm')}<span>${esc(d.n)}</span><i class="dim">${dexNo(id)}${st === 2 ? ' ⚔' : st === 1 ? ' 👁' : ''}</i>${md ? `<i class="dex-medals">${md}</i>` : ''}${own(id) ? '<i class="dex-own" title="영입한 포켓몬">🤝</i>' : ''}${shinyMine(id) ? '<i class="dex-shiny" title="이로치를 얻었어요">✨</i>' : ''}</button>`; }).join('')}</div>`;
   }
 
@@ -82,7 +84,7 @@ const Dex = (() => {
       let n = 0;
       for (const b of items) {
         const ok = (!s || b.dataset.s.includes(s)) && (!g || !g.value || b.dataset.g === g.value) && (!k || !k.value || (b.dataset.k || '').split(',').includes(k.value))
-          && (!t || !t.value || b.dataset.t.split(',').includes(t.value)) && (!c || !c.value || (c.value === 'r' ? !!b.dataset.r : c.value === 'r0' ? !b.dataset.r : c.value === 's' ? b.dataset.sh === 'y' : c.value === 's0' ? b.dataset.sh === 'n' : c.value === 'sx' ? b.dataset.sh === 'x' : c.value.split(',').includes(b.dataset.c)));
+          && (!t || !t.value || b.dataset.t.split(',').includes(t.value)) && (!c || !c.value || (c.value === 'r' ? b.dataset.r === '1' : c.value === 'r0' ? !b.dataset.r : c.value === 's' ? b.dataset.sh === 'y' : c.value === 's0' ? b.dataset.sh === 'n' : c.value === 'sx' ? b.dataset.sh === 'x' : c.value.split(',').includes(b.dataset.c)));
         b.style.display = ok ? '' : 'none';
         if (ok) n++;
       }
@@ -204,7 +206,7 @@ const Dex = (() => {
   function showItem(id) {
     const it = ITEMS[id];
     const sig = it.sig ? it.who || it.hold.only.filter(sp => DATA.species[sp]).map(spName).join('·') : '';
-    const where = sig ? [...(it.tradeOnly ? [] : [`마을 상점에 가끔 진열 (₽${it.price})`, `${sig}이(가) 나오는 던전에서 드물게 발견`]), ...(SIG_TRADE_ITEMS.includes(id) ? [`교환 탭의 삐딱구리 트레이드 (티켓 ${SIG_TICKETS}장)`] : [])]
+    const where = sig ? [...(it.tradeOnly ? [] : [`마을 상점에 가끔 진열 (₽${it.price})`, `${sig}이(가) 나오는 던전에서 드물게 발견`]), ...(SIG_TRADE_ITEMS.includes(id) ? [`교환 탭의 삐딱구리 트레이드 (티켓 ${sigTickets(id)}장)`] : [])]
       : it.special ? ['업적 「도감 완성」(모든 포켓몬 만나기) 보상', `업적을 달성하면 마을 상점에 늘 진열 (₽${it.price})`]
       : [shopSet.has(id) ? `상점에서 ₽${it.price}에 구매` : '', dropSet.has(id) ? `던전 바닥에서 발견 (${dropStagesOf(id).map(i => DROP_STAGE_NAMES[i]).join('·')} 단계${ITEM_LV_RANGE[id] ? ` · 적 Lv${ITEM_LV_RANGE[id][1] < Infinity ? `${ITEM_LV_RANGE[id][1]} 미만` : `${ITEM_LV_RANGE[id][0]} 이상`} 층` : ''})` : ''].filter(Boolean);
     const how = it.vit ? '마을의 캐릭터 탭에서 먹인다. 효과는 그 포켓몬에게 영구히 남는다.' : it.tm ? `마을의 캐릭터 탭이나 던전 가방에서 사용한다. 배울 수 있는 포켓몬 ${SPECIES_IDS.filter(s => canLearnTM(+s, it.mv)).length}종.` : it.held ? '마을의 캐릭터 탭이나 던전 가방에서 지니게 하면 효과를 발휘한다. (한 번에 하나)' : it.use && it.use !== 'none' ? '던전에서 사용하거나 던질 수 있다.' : it.throw ? '던전에서 적에게 던져서 사용한다.' : id === 'stone' || id === 'link' ? '마을의 캐릭터 탭에서 진화할 때 소모된다.' : id === 'reviver' ? '가방에 있으면 쓰러질 때 자동으로 사용된다.' : '';
