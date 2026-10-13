@@ -422,7 +422,8 @@ body.touch #actions kbd { display: none; }
   #dungeon-screen { height: 100dvh; }
   /* 휴대폰: 탭을 옆으로 넘기지 않게 두 줄 격자로 (예전에는 한 줄 가로 스크롤이라 뒤쪽 탭이 숨어 보이지 않았다) */
   #town-tabs { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; padding: 6px; }
-  #town-tabs button { padding: 7px 1px; font-size: 12px; letter-spacing: -0.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* 탭이 11개라 6칸 두 줄: 아이콘 위·글자 아래로 줄을 나눠 글자가 잘리지 않게 (word-spacing으로 공백에서 늘 줄바꿈) */
+  #town-tabs button { padding: 5px 1px; font-size: 12px; line-height: 1.25; letter-spacing: -0.3px; white-space: normal; word-spacing: 100vw; overflow: hidden; }
   /* 캐릭터 카드는 짧게: 능력치·기술은 캐릭터 탭에서 */
   #char-card { padding: 8px 10px; }
   #char-card .portrait.big { width: 56px; height: 56px; }
@@ -689,6 +690,7 @@ button img, .rcard img, .pk img, #face { -webkit-user-drag: none; user-drag: non
 .town-head #town-day:empty, .town-head .town-online[hidden] { display: none; }
 /* 탭: 둥근 알약 모양, 고른 탭은 빛나게 */
 #town-tabs button { border-radius: 999px; transition: background .15s, transform .1s; }
+@media (max-width: 800px) { #town-tabs button { border-radius: 12px; } }   /* 두 줄 탭은 알약 대신 둥근 네모 */
 @media (min-width: 801px) { #town-tabs button { padding: 6px 14px; } }
 #town-tabs button:hover { background: #ffffff22; }
 #town-tabs button.on { box-shadow: 0 0 0 2px #ffffff55, 0 0 12px #ffd34a80; }
