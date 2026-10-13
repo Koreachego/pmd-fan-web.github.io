@@ -121,6 +121,15 @@ const Dungeon = (() => {
     for (let yy = y - r; yy <= y + r; yy++) for (let xx = x - r; xx <= x + r; xx++) if (floorAt(xx, yy) && D.room[idx(xx, yy)] < 0) return true;
     return false;
   }
+  // 바닥·적이 떨어뜨리는 것 하나: 메가스톤 → 드롭 표 (null이면 돈 무더기). 청정의 탑·오늘의 도전은 돈 대신 다시 뽑는다
+  const FLASH_R = 10;   // 플래시로 밝히는 지도 범위 (칸)
+  // 자연 회복 배율 (v0.102 보강): 특성과 지닌 물건(·증표)의 늘어나는 몫을 더한다. 예) 재생력 2배 + 먹다남은음식 2배 = 3배 (예전에는 곱해서 4배)
+  const regenMul = (c, H) => 1 + Math.max(0, (abVal(c, 'regen') || 1) - 1) + Math.max(0, (H.regen || 1) - 1);
+  function floorDrop(lvl) {
+    for (let k = 0; k < 8; k++) { const id = rollMega('floor', lvl, D.dg) || pickDrop(D.dropLv, D.dg); if (id || !itemDg()) return id; }
+    return 'oran';
+  }
+  const itemDg = () => !!(D.dg.pure || D.dg.daily);   // 돈 대신 아이템이 떨어지는 던전 (v1.02)
   function randomRoomTile(opts = {}) {
     for (let tries = 0; tries < 400; tries++) {
       const r = opts.room != null ? D.rooms[opts.room] : pick(D.rooms);
@@ -182,7 +191,7 @@ const Dungeon = (() => {
   function ownedSet() { const s = Game.save; return new Set(s ? Object.keys(s.roster).flatMap(k => [+k, ...preEvos(+k)]) : []); }
   const shinyMissing = id => !!DATA.species[id].sh && !Game.shinyOk(+id);
   function wantSet(ids) {
-    if (run.daily) return new Set();   // 오늘의 도전은 모두 같은 층이어야 하므로 그대로
+    if (run.daily || run.mode === 'rogue') return new Set();   // 오늘의 도전은 모두 같은 층이어야 하므로, 로그라이크는 영입·이로치와 상관없는 던전이라 그대로 (v0.102 보강)
     const own = ownedSet();
     const nw = ids.filter(id => !own.has(+id));
     return new Set(nw.length ? nw : ids.filter(shinyMissing));
@@ -236,7 +245,7 @@ const Dungeon = (() => {
     sp = sp || ((D.want && D.want.size) || lure ? weighted(D.pool.map(id => [id, (D.want && D.want.has(+id) ? WANT_W : 1) * (lure && DATA.species[id].t.includes(lure) ? LURE_W : 1)])) : pick(D.pool));
     const c = makeCreature(sp, run.hard ? run.hardLv : clamp((lv || D.lvl) + rint(-1, 1), 1, MAX_LEVEL));   // 하드모드: 레벨 고정
     c.enemy = true; c.x = pos.x; c.y = pos.y; c.dir = rand(8);
-    c.shiny = !!DATA.species[sp].sh && Math.random() < SHINY_CHANCE * (hasShinyCharm(Game.save) ? SHINY_CHARM_MUL : 1);   // 빛나는부적: 도감 완성 업적이 있으면 늘 2배
+    c.shiny = !!DATA.species[sp].sh && shinyRand() < SHINY_CHANCE * (hasShinyCharm(Game.save) ? SHINY_CHARM_MUL : 1);   // 빛나는부적: 도감 완성 업적이 있으면 늘 2배
     Sprites.load(sp, c.shiny);
     rollEnemyForm(c);
     if (run.hard) { c.moves = hardMoves(c); c.hpMul = HARD_FOE.hp; c.statMul = HARD_FOE.stat; recalc(c); c.hp = c.maxhp; }
@@ -406,7 +415,17 @@ const Dungeon = (() => {
     }
   }
 
+  // 이로치 판정 (v0.102 보강): 층마다 정해 둔 씨앗으로 n번째로 나오는 적의 이로치 여부가 정해진다.
+  //  씨앗은 이어하기 기록(save.run)에 남아서, 새로고침해 층을 다시 시작해도 같은 순서의 적은 같은 결과 (보스방 등에서 새로고침으로 이로치를 다시 뽑지 못하게)
+  function shinyRand() {
+    const sd = run.shinySeed; if (!sd) return Math.random();
+    let t = (sd.seed + 0x6D2B79F5 * (++run.shinyN)) | 0;
+    t = Math.imul(t ^ t >>> 15, 1 | t); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  }
   function newFloor() {
+    if (!run.shinySeed || run.shinySeed.floor !== run.floor) run.shinySeed = { floor: run.floor, seed: (Math.random() * 4294967296) >>> 0 };
+    run.shinyN = 0;
     run.p.partners = dungeonById(run.dungeon).pure ? -1 : (run.party || []).length;   // 혼자 탐험 보정 (afterPlayer와 같게). 청정의 탑은 보정 없음
     untransform(run.p); (run.party || []).forEach(untransform);   // 괴짜: 지난 층의 변신을 푼다 (이 층에서 처음 만나는 적으로 다시)
     const dg = dungeonById(run.dungeon);
@@ -430,18 +449,18 @@ const Dungeon = (() => {
     p.noSleep = false;   // 유루열매는 그 층에서만 (랑사열매는 100턴)
     if (bossFloor) {
       p.dir = 4; p.tween = null; p.act = null; p.stages = p.stages || {}; p.stageT = p.stageT || {};
-      p.charging = null; p.rampage = null; p.recharge = false; p.chain = null; p.struck = new Set(); p.lastActSeq = p.lastHurtSeq = 0;
+      p.charging = null; p.rampage = null; p.recharge = false; p.boundT = 0; p.chain = null; p.struck = new Set(); p.lastActSeq = p.lastHurtSeq = 0;
       setupBossFloor(dg, p);
       computeVis();
     } else {
     const startRoom = rand(D.rooms.length);
     const sp = randomRoomTile({ room: startRoom });
     p.x = sp.x; p.y = sp.y; p.dir = 0; p.tween = null; p.act = null; p.stages = p.stages || {}; p.stageT = p.stageT || {};
-    p.charging = null; p.rampage = null; p.recharge = false; p.chain = null; p.struck = new Set(); p.lastActSeq = p.lastHurtSeq = 0;
+    p.charging = null; p.rampage = null; p.recharge = false; p.boundT = 0; p.chain = null; p.struck = new Set(); p.lastActSeq = p.lastHurtSeq = 0;
     // 계단
-    let sroom = rand(D.rooms.length);
-    if (D.rooms.length > 1) while (sroom === startRoom) sroom = rand(D.rooms.length);
-    D.stairs = randomRoomTile({ room: sroom, noItem: true });
+    // 계단은 원작처럼 어느 방에나 (처음 들어선 방도, v0.102 보강: 예전에는 첫 방에는 절대 없었다). 발밑에는 두지 않는다
+    const sroom = rand(D.rooms.length);
+    for (let k = 0; k < 20; k++) { D.stairs = randomRoomTile({ room: sroom, noItem: true }); if (!(D.stairs.x === p.x && D.stairs.y === p.y)) break; }
     const freeRooms = D.rooms.map((_, i) => i).filter(i => i !== startRoom && i !== sroom);
     if (lvl >= FEATURE_LV.shop && Math.random() < SHOP_CHANCE) makeShop(freeRooms);
     // 몬스터하우스: 보통은 한 층에 하나까지. 하드모드는 2층부터 더 자주, 여러 개
@@ -461,17 +480,22 @@ const Dungeon = (() => {
       for (let i = rint(2, 4) + Math.floor(lvl / 25); i > 0; i--) {
         const t = randomRoomTile({ noItem: true, far: 3 });
         // 복도와 붙은 칸(방 출입구 옆)에는 만들지 않는다
-        if (t && !nearCorridor(t.x, t.y, 2)) { const kind = pick(kinds); D.traps.push({ ...t, kind, seen: TRAP_VISIBLE.includes(kind) }); }
+        if (t && !nearCorridor(t.x, t.y, 2)) { const kind = weighted(kinds.map(k => [k, TRAP_W[k] || 1])); D.traps.push({ ...t, kind, seen: TRAP_VISIBLE.includes(kind) }); }
       }
     }
+    if (Math.random() < RESET_EXTRA) {   // 능력 리셋 발판 하나 더 (떨어진 능력을 되돌리러 찾아갈 수 있게)
+      const t = randomRoomTile({ noItem: true, far: 3 });
+      if (t && !nearCorridor(t.x, t.y, 2)) D.traps.push({ ...t, kind: 'reset', seen: true });
+    }
     // 아이템 / 돈
-    const nItems = rint(ITEMS_PER_FLOOR[0], ITEMS_PER_FLOOR[1]);
-    for (let i = 0; i < nItems; i++) { const t = randomRoomTile({ noItem: true }); if (t) { const id = rollMega('floor', lvl, D.dg) || pickDrop(D.dropLv, D.dg); D.items.push(id ? { ...t, id, n: 1 } : { ...t, money: moneyPile(lvl) }); } }
+    // 청정의 탑·오늘의 도전 (v0.102 보강): 돈 무더기 대신 아이템 (아이템 2~4 + 돈 무더기 2~4 → 아이템 4~8), 돈으로 바뀌는 몫도 아이템으로
+    const pureDg = itemDg(), nMoney = pureDg ? 0 : rint(2, 4);
+    const nItems = rint(ITEMS_PER_FLOOR[0], ITEMS_PER_FLOOR[1]) + (pureDg ? rint(2, 4) : 0);
+    for (let i = 0; i < nItems; i++) { const t = randomRoomTile({ noItem: true }); if (t) { const id = floorDrop(lvl); D.items.push(id ? { ...t, id, n: 1 } : { ...t, money: moneyPile(lvl) }); } }
     // 전용 도구: 그 주인이 이 층에 나오면 드물게 바닥에 하나
     const sig = sigItemsFor(pool);
     if (sig.length && Math.random() < SIG_DROP.floor) { const t = randomRoomTile({ noItem: true }); if (t) D.items.push({ ...t, id: pick(sig), n: 1 }); }
     D.items.forEach(it => { if (it.id && ITEMS[it.id].stack) it.n = rint(3, 9); });
-    const nMoney = rint(2, 4);
     for (let i = 0; i < nMoney; i++) { const t = randomRoomTile({ noItem: true }); if (t) D.items.push({ ...t, money: moneyPile(lvl) }); }
     // 적
     computeVis();
@@ -528,7 +552,7 @@ const Dungeon = (() => {
       if (!spot) continue;
       a.x = spot.x; a.y = spot.y; a.dir = p.dir; a.tween = null; a.act = null; a.dead = false;
       a.stages = a.stages || {}; a.stageT = a.stageT || {};
-      a.charging = null; a.rampage = null; a.recharge = false; a.struck = new Set(); a.target = null;
+      a.charging = null; a.rampage = null; a.recharge = false; a.boundT = 0; a.struck = new Set(); a.target = null;
       D.mons.push(a); Sprites.load(looksOf(a), a.shiny);
     }
   }
@@ -644,6 +668,7 @@ const Dungeon = (() => {
     p.seeded = null; p.yawnT = 0; p.protecting = false;   // 지난 층의 씨앗(심은 적은 이 층에 없다)·하품
     resetBattleForm(p, D.weather);
     if (run.floor > 1 || run.sos) p.hero = true;   // 돌핀맨: 계단을 내려간 뒤로는 마이티폼
+    if (run.floor === 1 && (p.player || p.ally)) { const sf = START_FORMS[p.sp], ch = Game.save.roster[p.rsp || p.sp]; if (sf && ch && ch.startForm) p[sf.flag] = true; }   // 시작 모습 (메로엣타 스텝폼 등)
     formCheck(p, now() + 500);
     const A = abilityOf(p), at = now() + 600;
     if (!p.player) {
@@ -672,6 +697,23 @@ const Dungeon = (() => {
     if (A.floorRandom) statChange(p, pick([2, 3, 4, 5, 7, 8]), 1, at, p);
     if (A.pickup && Math.random() < A.pickup) { const id = weighted(dropTable(D.dropLv, D.dg)); if (addToBag(id)) abLog(p, `${jo(ITEMS[id].n, '을')} 주워 왔다!`, at); }
     if (A.honey && Math.random() < 0.2 && addToBag('apple')) abLog(p, '사과를 발견했다!', at);
+  }
+  // 층에 들어설 때 발동하는 특성을 같은 층에서 ABILITY_RENEW턴마다 다시 (v0.102 보강)
+  //  날씨(가뭄·잔비 등)·필드(메이커)는 다른 날씨·필드로 바뀌어 있으면 다시 바꾸고, 탈은 다시 씌우고, 다운로드 등 능력 올리기는 다시 (주워 오기·꿀모으기는 층마다 한 번)
+  const ABILITY_RENEW = 100;
+  function renewAbilities() {
+    const at = Math.max(T.cursor, T.moveEnd) + 200;
+    const team = [P(), ...D.mons.filter(a => a.ally && a.hp > 0)], foes = D.mons.filter(e => e.hp > 0 && !e.ally && !e.npc && seen(e));
+    for (const c of [...team, ...foes]) {
+      const A = abilityOf(c), mine = c.player || c.ally;
+      if (A.disguise && c.disguiseBroken) { c.disguiseBroken = false; formCheck(c, at); abLog(c, `${nm(c)}의 탈이 다시 원래대로 돌아왔다!`, at); }
+      if (A.setWeather && weatherRaw() !== A.setWeather) setWeather(A.setWeather, c, at);
+      if (A.setTerrain && CUR_TERRAIN !== A.setTerrain) setTerrain(A.setTerrain, c, at);
+      if (!mine) continue;
+      if (A.download) statChange(c, c.atk >= c.spa ? 2 : 4, 1, at, c);
+      if (A.floorStart) floorStats(A.floorStart).forEach(([st, n], k) => statChange(c, st, n, at + k * 150, c));
+      if (A.floorRandom) statChange(c, pick([2, 3, 4, 5, 7, 8]), 1, at, c);
+    }
   }
   // ── 괴짜(메타몽): 처음 마주친 상대로 변신 ──
   // 모습·타입·능력치(내 레벨 기준, TF_STAT_MUL배)·능력 변화·특성·기술(PP TF_PP)을 따라 한다. HP는 그대로, 다음 층에 들어설 때 원래대로
@@ -741,6 +783,7 @@ const Dungeon = (() => {
   function diagOK(x, y, dx, dy) { return !(dx && dy) || (openAt(x + dx, y) && openAt(x, y + dy)); }
   function canStep(c, dx, dy) {
     const x = c.x + dx, y = c.y + dy;
+    if (c.boundT > 0) return false;   // 김밥말이·회오리불꽃 등에 갇혀 있으면 걷지 못한다 (공격은 된다)
     return passable(c, x, y) && diagOK(c.x, c.y, dx, dy) && !creatureAt(x, y);
   }
   // 편: 플레이어와 동료(ally)가 한 편, 나머지 적이 한 편
@@ -890,7 +933,7 @@ const Dungeon = (() => {
     if (mid === EXPANDING_FORCE && CUR_TERRAIN === 'psychic' && grounded(user)) move = { ...move, r: 'r' };   // 와이드포스: 사이코필드에서는 주변(3칸 안)의 모든 상대에게 (위력 80 → 120은 powerMul)
     if (slot >= 0 && !opts.free) {
       if (party(user) && Math.random() < masteryFree(user.sp, mid)) log(`${jo(nm(user), '은')} PP를 쓰지 않았다! (숙련도)`, T.base);
-      else if (party(user) && heldOf(user).ppFree && Math.random() < heldOf(user).ppFree) log(`${jo(nm(user), '은')} PP를 쓰지 않았다! (${ITEMS[user.held].n} +${SIG_UP_TOP})`, T.base);   // 전용 도구 +4
+      else if (party(user) && heldOf(user).ppFree && Math.random() < heldOf(user).ppFree) log(`${jo(nm(user), '은')} PP를 쓰지 않았다! (${ITEMS[badgeOf(user) || user.held].n} +${SIG_UP_TOP})`, T.base);   // 전용 도구 +4
       else user.moves[slot].pp--;
     }
     user.dir = dir;
@@ -931,9 +974,11 @@ const Dungeon = (() => {
     }
     let targets = [];
     const [dx, dy] = DIRS[dir];
-    if (move.r === 'f') {
+    if (move.r === 'f' && R.wide) {   // 수평베기: 앞과 앞 양옆 대각선
+      for (const k of [-1, 0, 1]) { const [ex, ey] = DIRS[(dir + k + 8) % 8], t = creatureAt(user.x + ex, user.y + ey); if (t && hostileTo(user, t) && diagOK(user.x, user.y, ex, ey)) targets.push(t); }
+    } else if (move.r === 'f') {
       const t = creatureAt(user.x + dx, user.y + dy);
-      if (t && hostileTo(user, t) && diagOK(user.x, user.y, dx, dy)) targets = [t];
+      if (t && hostileTo(user, t) && (diagOK(user.x, user.y, dx, dy) || R.reach >= 2)) targets = [t];   // 선공기: 원작처럼 벽 모서리 너머 바로 옆 대각선도 맞는다 (v0.102 보강)
       else if ((!t || (party(user) && party(t))) && R.reach >= 2 && openAt(user.x + dx, user.y + dy) && diagOK(user.x, user.y, dx, dy)) {   // 선공기: 바로 앞이 비었으면 한 칸 너머
         const t2 = creatureAt(user.x + 2 * dx, user.y + 2 * dy);
         if (t2 && hostileTo(user, t2) && diagOK(user.x + dx, user.y + dy, dx, dy)) targets = [t2];
@@ -945,14 +990,18 @@ const Dungeon = (() => {
         if (!openAt(x, y)) break;   // 웅덩이 위로는 날아간다 (벽에서만 멈춘다)
         const t = creatureAt(x, y);
         if (t && party(user) && party(t)) continue;   // 탐험대의 직선 기술은 동료를 지나간다
+        if (t && R.pierce) { if (hostileTo(user, t)) targets.push(t); continue; }   // 관통: 사거리 안의 모든 적 (같은 편은 지나간다)
         if (t) { if (hostileTo(user, t)) targets = [t]; break; }
       }
-      D.fx.push({ kind: 'proj', x0: user.x, y0: user.y, x1: targets[0]?.x ?? x, y1: targets[0]?.y ?? y, at: t0 + dur * 0.3, dur: dur * 0.3, color });
+      if (R.pierce && targets.length) { x = targets[targets.length - 1].x; y = targets[targets.length - 1].y; }
+      D.fx.push({ kind: 'proj', x0: user.x, y0: user.y, x1: R.pierce ? x : targets[0]?.x ?? x, y1: R.pierce ? y : targets[0]?.y ?? y, at: t0 + dur * 0.3, dur: dur * 0.3, color });
     } else if (move.r === 'r') {
       const pool = [D.player, ...D.mons].filter(t => t && t.hp > 0);
       targets = pool.filter(t => hostileTo(user, t) && Math.max(Math.abs(t.x - user.x), Math.abs(t.y - user.y)) <= 3 && los(user.x, user.y, t.x, t.y));
       D.fx.push({ kind: 'ring', x: user.x, y: user.y, at: t0 + dur * 0.3, dur: 350 * spd(), color });
     }
+    // 플래시 (v0.102 보강): 주변 FLASH_R칸 안의 지도를 밝힌다 (탐험대가 쓸 때만, 층마다 처음 한 번). 그다음 원래 효과(명중률 낮추기)
+    if (R.mapAll && party(user) && !D.mapLit) { D.mapLit = true; for (let y = Math.max(0, user.y - FLASH_R); y <= Math.min(D.h - 1, user.y + FLASH_R); y++) for (let x = Math.max(0, user.x - FLASH_R); x <= Math.min(D.w - 1, user.x + FLASH_R); x++) D.explored[idx(x, y)] = 1; log(`번쩍! 주변이 밝아졌다! (주변 ${FLASH_R}칸의 지도를 밝혔다)`, hitAt); D.fx.push({ kind: 'ring', x: user.x, y: user.y, at: hitAt, dur: 600 * spd(), color: '#fff8c0' }); }
     // 맞은 자리 이펙트 (원작 이펙트가 있는 타입의 공격 기술)
     // 치유파동·플라워힐: 같은 편 하나를 회복
     if (R.allyHeal) {
@@ -1006,11 +1055,11 @@ const Dungeon = (() => {
         if (amt > 0) { noteHp(user, hitAt + 100, user.hp); user.hp -= amt; user.hurtAt = hitAt + 100; popup(user, '-' + amt, '#ff8a8a', hitAt + 100); log(`${jo(nm(user), '은')} 반동으로 데미지를 입었다.`, hitAt + 100); }
       }
       if (R.rampage) {
-        if (!opts.free) user.rampage = { slot, left: rint(1, 2) };
+        if (!opts.free) user.rampage = { slot, left: R.rampTurns || rint(1, 2), calm: !!R.noConfuse, uproar: !!R.uproar };
         else if (user.rampage && --user.rampage.left <= 0) {
-          user.rampage = null;
-          log(`${jo(nm(user), '은')} 난동을 부린 끝에 지쳐버렸다!`, hitAt + 150);
-          inflict(user, 'cnf', hitAt + 150);
+          const calm = user.rampage.calm; user.rampage = null;
+          if (calm) log(`${jo(nm(user), '은')} 소란을 멈췄다.`, hitAt + 150);   // 소란피기: 끝나도 혼란에 빠지지 않는다
+          else { log(`${jo(nm(user), '은')} 난동을 부린 끝에 지쳐버렸다!`, hitAt + 150); inflict(user, 'cnf', hitAt + 150); }
         }
       }
     }
@@ -1043,7 +1092,12 @@ const Dungeon = (() => {
   function rampageStep(c) {
     const foes = [D.player, ...D.mons].filter(m => hostileTo(c, m));
     const adj = foes.find(f => Math.max(Math.abs(f.x - c.x), Math.abs(f.y - c.y)) === 1 && diagOK(c.x, c.y, Math.sign(f.x - c.x), Math.sign(f.y - c.y)));
-    const dir = adj ? dirIndex(adj.x - c.x, adj.y - c.y) : c.dir;
+    let dir = adj ? dirIndex(adj.x - c.x, adj.y - c.y) : c.dir;
+    if (!adj && DATA.moves[c.moves[c.rampage.slot]?.id]?.r === 'p') {   // 소란피기 같은 원거리 난동: 직선 위의 가장 가까운 적
+      const al = foes.filter(f => { const dx = f.x - c.x, dy = f.y - c.y, d = Math.max(Math.abs(dx), Math.abs(dy)); return (dx === 0 || dy === 0 || Math.abs(dx) === Math.abs(dy)) && d <= PROJ_RANGE && lineClear(c, dirIndex(dx, dy), d); })
+        .sort((a, b) => Math.max(Math.abs(a.x - c.x), Math.abs(a.y - c.y)) - Math.max(Math.abs(b.x - c.x), Math.abs(b.y - c.y)));
+      if (al[0]) dir = dirIndex(al[0].x - c.x, al[0].y - c.y);
+    }
     useMove(c, c.rampage.slot, confuse(c, dir), { free: true });
   }
 
@@ -1112,8 +1166,15 @@ const Dungeon = (() => {
         if (move.ail && Math.random() * 100 < move.ac * serene) inflict(tgt, move.ailPick ? pick(move.ailPick) : AILMENT_MAP[move.ail], at, false, user);
         if (move.fl && Math.random() * 100 < move.fl * serene) setFlinch(tgt, at);
       }
+      // 가두는 기술 (v0.102 보강): 4~5턴 동안 걷지 못하고 턴마다 최대 HP의 1/16 데미지 (보스는 절반 턴)
+      if (tgt.hp > 0 && R.bind && !(tgt.boundT > 0)) {
+        tgt.boundT = tgt.boss ? 2 : rint(4, 5); tgt.boundBy = user;
+        if (tgt.player || seen(tgt)) log(`${jo(nm(tgt), '은')} ${move.n}에 갇혔다! (${tgt.boundT}턴)`, at);
+      }
       if (tgt.hp > 0 && A.stench && Math.random() < 0.1 * serene) setFlinch(tgt, at);
       if (tgt.hp > 0 && A.poisonTouch && Math.random() < 0.3) inflict(tgt, 'psn', at, false, user);
+      // 모래뿜기·넘치는씨 (v0.102 보강): 공격을 받으면 모래바람 / 그래스필드 (원작처럼)
+      if (tgt !== user && r.dmg > 0) { const TA = abilityOf(tgt); if (TA.hitWeather && weatherRaw() !== TA.hitWeather) setWeather(TA.hitWeather, tgt, at + 100); if (TA.hitTerrain && CUR_TERRAIN !== TA.hitTerrain) setTerrain(TA.hitTerrain, tgt, at + 100); }
       if (tgt.hp > 0 && r.crit && abilityOf(tgt).angerPoint) { tgt.stages[2] = 6; stageTimer(tgt, 2); abLog(tgt, `${nm(tgt)}의 공격이 최대로 올라갔다!`, at); }
       if (tgt.hp > 0 && total > 0) onHitAbility(tgt, user, move, mt, at);
       if (total > 0 && user.hp > 0 && abilityOf(tgt).spicySpray && !user.status) { abLog(tgt, `${jo(nm(user), '은')} 하바네로분출에 데었다!`, at); inflict(user, 'brn', at, false, tgt); }
@@ -1263,7 +1324,7 @@ const Dungeon = (() => {
     if (c.hp > before) { if (c.player) Sound.play('heal', at); popup(c, '+' + (c.hp - before), '#7f7', at); log(`${jo(nm(c), '은')} HP를 ${c.hp - before} 회복했다.`, at); }
   }
   // src: 능력 변화를 일으킨 쪽 (상대가 떨어뜨렸는지 판정)
-  function statChange(c, st, ch, at, src) {
+  function statChange(c, st, ch, at, src, turns) {
     const A = abilityOf(c), byFoe = src && src !== c;
     if (A.contrary) ch = -ch;
     if (A.simple) ch *= 2;
@@ -1272,12 +1333,17 @@ const Dungeon = (() => {
       if (nd && (nd === 'all' || nd.includes(st))) { abLog(c, `${nm(c)}의 ${jo(STAT_NAMES[st], '은')} 떨어지지 않는다!`, at); return; }
       if (heldOf(c).noDrop) { log(`${ITEMS[c.held].n}의 힘으로 ${nm(c)}의 ${jo(STAT_NAMES[st], '은')} 떨어지지 않았다!`, at); return; }
     }
-    const cur = c.stages[st] || 0, nv = clamp(cur + ch, -6, 6);
+    const cur = c.stages[st] || 0;
+    let nv = clamp(cur + ch, -6, 6);
+    if (ch < 0 && src === c && !turns) {   // 자기 기술의 반동: -2까지만
+      nv = Math.max(nv, Math.min(cur, SELF_DROP_MIN));
+      if (nv === cur) { log(`${nm(c)}의 ${jo(STAT_NAMES[st], '은')} 반동으로는 더 떨어지지 않는다. (${SELF_DROP_MIN}까지)`, at); return; }
+    }
     if (nv === cur) {   // 이미 최대: 가장 적게 남은 랭크의 지속 시간을 새로 센다
-      stageRefresh(c, st, Math.abs(ch));
+      stageRefresh(c, st, Math.abs(ch), turns);
       log(`${nm(c)}의 ${jo(STAT_NAMES[st], '은')} 더 이상 ${ch > 0 ? '오르지' : '떨어지지'} 않는다! (지속 시간 갱신)`, at); return;
     }
-    c.stages[st] = nv; stageTimer(c, st);
+    c.stages[st] = nv; stageTimer(c, st, turns);
     if (c.player || seen(c)) Sound.play(ch > 0 ? 'up' : 'down2', at);
     log(`${nm(c)}의 ${jo(STAT_NAMES[st], '이')}${Math.abs(ch) > 1 ? ' 크게' : ''} ${ch > 0 ? '올라갔다!' : '떨어졌다!'}`, at);
     if (ch < 0 && byFoe && A.defiant) { abLog(c, '능력이 떨어져서 오기가 생겼다!', at); statChange(c, A.defiant, 2, at, c); }
@@ -1290,6 +1356,7 @@ const Dungeon = (() => {
     const A = src && src !== c ? defAbility(src, c) : abilityOf(c);
     if (terrainOn(c, 'misty')) { if (verbose || c.player || seen(c)) log(`${jo(nm(c), '은')} 미스트필드에 지켜지고 있다!`, at); return; }   // 미스트필드: 상태이상·혼란을 막는다
     if (kind === 'slp' && terrainOn(c, 'electric')) { if (verbose || c.player || seen(c)) log(`${jo(nm(c), '은')} 일렉트릭필드 때문에 잠들지 않는다!`, at); return; }
+    if (kind === 'slp' && [D.player, ...D.mons].some(x => x && x.hp > 0 && x.rampage && x.rampage.uproar)) { if (verbose || c.player || seen(c)) log(`소란 때문에 ${jo(nm(c), '은')} 잠들 수 없다!`, at); return; }   // 소란피기 중에는 아무도 잠들지 않는다
     if (kind === 'slp' && c.noSleep) { log(`${jo(nm(c), '은')} 유루열매 덕분에 잠들지 않았다!`, at); return; }
     if (heldOf(c).noStatus && heldOf(c).noStatus.includes(kind)) { log(`${jo(nm(c), '은')} ${ITEMS[c.held].n}의 힘으로 ${STATUS_NAMES[kind]} 상태를 막았다!`, at); return; }
     if (A.noStatus && A.noStatus.includes(kind)) { abLog(c, `${jo(nm(c), '은')} ${STATUS_NAMES[kind]} 상태가 되지 않는다!`, at); return; }
@@ -1320,6 +1387,7 @@ const Dungeon = (() => {
   function damage(c, amt, src, at, eff = 1, crit = false, multi = false) {
     if (c.hp <= 0) return;
     if (src && party(src) && !party(c)) { wakeNap(c, at, true); if (src.player) c.provoked = true; }
+    if (src && !party(src) && party(c)) src.hitParty = D.turn;   // 탐험대를 공격한 적 (동료가 멀리서 쏘는 적도 상대하게, v1.02)
     if (src && src !== c) { c.lastHurt = amt; c.lastHurtTurn = D.turn; }   // 앙갚음용: 공격으로 받은 데미지   // 잠든 적은 맞으면 깬다 / 리더가 공격한 적 (먼저 공격하지마 작전)
     const A = abilityOf(c);
     if (!src && A.magicGuard) return;
@@ -1352,6 +1420,12 @@ const Dungeon = (() => {
     if (c.reflectT && --c.reflectT <= 0) { c.reflectT = 0; if (show) log(`${nm(c)}의 리플렉터가 사라졌다.`, at); }
     if (c.screenT && --c.screenT <= 0) { c.screenT = 0; if (show) log(`${nm(c)}의 빛의장막이 사라졌다.`, at); }
     if (c.tauntT && --c.tauntT <= 0) { c.tauntT = 0; if (show) log(`${nm(c)}의 도발이 풀렸다.`, at); }
+    if (c.boundT > 0) {   // 가두는 기술: 턴마다 1/16, 가둔 쪽이 쓰러지거나 멀어지면 풀린다
+      const by = c.boundBy;
+      if (!by || by.hp <= 0 || Math.max(Math.abs(by.x - c.x), Math.abs(by.y - c.y)) > 6) c.boundT = 0;
+      else { damage(c, Math.max(1, Math.floor(c.maxhp / 16)), by, at); if (show) log(`${jo(nm(c), '은')} 갇혀서 데미지를 입고 있다.`, at); if (--c.boundT <= 0 && c.hp > 0 && show) log(`${jo(nm(c), '은')} 풀려났다!`, at); }
+      if (c.boundT <= 0) c.boundBy = null;
+    }
     if (c.yawnT && --c.yawnT <= 0) { c.yawnT = 0; if (!c.status) inflict(c, 'slp', at, true); }
     const sd = c.seeded;
     if (sd) {
@@ -1402,13 +1476,15 @@ const Dungeon = (() => {
     log(`${WEATHERS[old].icon} ${jo(WEATHERS[old].n, '이')} 그쳤다.`, at);
     applyForecast(D.player); D.mons.forEach(applyForecast);
   }
+  // 부활씨 (v0.102 보강): 되살아나면 PP도 모두 채운다 (변신 중이면 원래 기술도)
+  function refillPP(c) { for (const m of [...(c.moves || []), ...((c.tf && c.tf.moves) || [])]) if (m && m.max) m.pp = m.max; }
   function faint(c, src, at) {
     if (c.player) {
       const bi = run.bag.findIndex(b => b.id === 'reviver');
       if (bi >= 0) {
         takeFromBag(bi);
-        c.hp = c.maxhp; c.status = null; c.stages = {};
-        log(`쓰러졌지만 부활씨의 힘으로 되살아났다!`, at);
+        c.hp = c.maxhp; c.status = null; c.stages = {}; c.stageS = {}; c.stageT = {}; refillPP(c);
+        log(`쓰러졌지만 부활씨의 힘으로 되살아났다! (PP도 모두 회복)`, at);
         popup(c, 'REVIVE', '#ffe066', at + 150);
         return;
       }
@@ -1441,14 +1517,14 @@ const Dungeon = (() => {
     }
     if (src && abilityOf(c).aftermath && src.hp > 0 && (abilityOf(c).aftermath !== 'contact' || c.lastHitContact)) { abLog(c, `${jo(nm(src), '은')} 폭발에 휘말렸다!`, at); damage(src, pctDmg(src, 1 / 4), c, at); }   // 유폭은 접촉 기술로 쓰러졌을 때만, 내용물분출은 어떤 공격이든 (v0.100)
     if (byParty) {
-      const expOf = m => Math.floor(expGain(c, m.lv) * (c.outlaw || c.boss ? BOSS_EXP_MUL : 1) * (c.shiny ? 2 : 1) * (heldOf(m).expMul || 1) * (run.mode === 'rogue' && !dungeonById(run.dungeon).pure ? ROGUE_EXP_MUL : 1));   // 청정의 탑은 로그라이크 경험치 보정 없음
+      const expOf = m => Math.floor(expGain(c, m.lv) * (c.outlaw || c.boss ? BOSS_EXP_MUL : 1) * (c.shiny ? 2 : 1) * (heldOf(m).expMul || 1) * (run.mode === 'rogue' ? ROGUE_EXP_MUL : 1));   // 로그라이크(청정의 탑 포함) 경험치 보정
       gainExp(expOf(P()), at);
       for (const a of allies()) allyExp(a, expOf(a), at);   // 동료도 같은 방식으로 경험치를 받는다
       const free = floorAt(c.x, c.y) && !itemAt(c.x, c.y) && !(D.stairs.x === c.x && D.stairs.y === c.y);   // 웅덩이 위에서 쓰러지면 떨어뜨리지 않는다
       const sig = sigItemsFor([c.sp]);
       if (c.shiny && free) D.items.push({ x: c.x, y: c.y, id: rollMega('shiny', c.lv, D.dg) || weighted(rewardPool(D.dropLv + 10, D.dg)), n: 1 });   // 이로치: 보스 보상과 같은 등급
       else if (sig.length && !c.boss && free && Math.random() < SIG_DROP.defeat) D.items.push({ x: c.x, y: c.y, id: pick(sig), n: 1 });
-      else if (Math.random() < ENEMY_DROP_CHANCE * (leadField(run.p).drop || 1) && free) { const id = rollMega('floor', c.lv, D.dg) || pickDrop(D.dropLv, D.dg); D.items.push(id ? { x: c.x, y: c.y, id, n: 1 } : { x: c.x, y: c.y, money: moneyPile(D.lvl) }); }
+      else if (Math.random() < ENEMY_DROP_CHANCE * (leadField(run.p).drop || 1) && free) { const id = floorDrop(c.lv); D.items.push(id ? { x: c.x, y: c.y, id, n: 1 } : { x: c.x, y: c.y, money: moneyPile(D.lvl) }); }
       if (c.shiny && Game.unlockShiny(c.sp)) log(`✨ 이제 캐릭터 탭에서 ${jo(spName(c.sp), '과')} 그 진화 계열의 이로치 모습을 고를 수 있다!`, at + 300);
       if (run.mode === 'normal' && !c.outlaw && !NO_RECRUIT.includes(c.sp) && canRecruit(c.sp, Game.save.roster)) {   // 남은 진화가 없으면 진화 전 모습은 영입하지 않는다 (js/defs.js)
         const rate = recruitRateFor(P().lv, (Game.save.rank || {}).pts) * (DATA.species[c.sp].lg ? 0.5 : 1) * (heldOf(P()).recruitMul || 1);   // 등급 보너스 (v0.99)
@@ -1518,24 +1594,27 @@ const Dungeon = (() => {
   //  예: 10턴에 +1, 30턴에 +1 → 110턴에 앞의 +1이 끝나 +1로, 130턴에 0으로
   //  c.stageS[st] = { s: 방향(+1/-1), t: [랭크마다 남은 턴] }, c.stages[st]는 지금 랭크 (= 방향 × 개수), c.stageT[st]는 가장 먼저 끝나는 랭크의 남은 턴 (표시용)
   //  반대 방향으로 바뀌면 가장 적게 남은 랭크부터 지우고, 0을 지나 방향이 바뀌면 새로 센다
-  const STAGE_TURNS = 100;
-  function stageTimer(c, st) {
+  // 지속 시간 (v0.102 보강): 랭크 업 100턴, 랭크 다운 50턴, 랭크 업 아이템(플러스파워·스페셜업·열매 등) 300턴
+  const STAGE_TURNS = 100, STAGE_DOWN_TURNS = 50, STAGE_ITEM_TURNS = 300;
+  // 자기 기술의 반동으로 떨어지는 능력(아이스해머·인파이트·용성군 등)은 -2까지만 (v0.102 보강: 계속 쓰면 너무 약해졌다)
+  const SELF_DROP_MIN = -2;
+  function stageTimer(c, st, turns) {
     c.stageS = c.stageS || {}; c.stageT = c.stageT || {};
     const v = c.stages[st] || 0, n = Math.abs(v);
     let e = c.stageS[st];
     if (!e || e.s !== Math.sign(v)) e = { s: Math.sign(v), t: [] };
     e.t.sort((a, b) => b - a);
     while (e.t.length > n) e.t.pop();
-    while (e.t.length < n) e.t.push(STAGE_TURNS);
+    while (e.t.length < n) e.t.push(turns || (e.s > 0 ? STAGE_TURNS : STAGE_DOWN_TURNS));
     if (n) { c.stageS[st] = e; c.stageT[st] = Math.min(...e.t); }
     else { delete c.stageS[st]; delete c.stageT[st]; }
   }
   // 이미 최대(±6)인데 같은 쪽으로 또 바꾸면: 가장 적게 남은 랭크부터 k개를 새로 센다
-  function stageRefresh(c, st, k) {
+  function stageRefresh(c, st, k, turns) {
     stageTimer(c, st);
     const e = c.stageS[st]; if (!e) return;
     e.t.sort((a, b) => a - b);
-    for (let i = 0; i < Math.min(k, e.t.length); i++) e.t[i] = STAGE_TURNS;
+    for (let i = 0; i < Math.min(k, e.t.length); i++) e.t[i] = Math.max(e.t[i], turns || (e.s > 0 ? STAGE_TURNS : STAGE_DOWN_TURNS));
     c.stageT[st] = Math.min(...e.t);
   }
   function stageTick(c) {
@@ -1601,13 +1680,16 @@ const Dungeon = (() => {
   //   attack 적을 공격해: 멀리 있는 적도 쫓아가 공격한다 (보스가 보이면 보스부터)
   //   passive 먼저 공격하지마: 리더가 공격한 적만 상대하고, 그 밖에는 따라오기만 한다
   const tactic = () => (run && run.tactic) || 'follow';
-  const TACTIC_NAMES = { follow: '나를 따라와', free: '각자 행동', wait: '여기서 기다려', attack: '적을 공격해', passive: '먼저 공격하지마' };
+  // 동료별 작전 (v1.02): run.tactics[포켓몬 번호]가 있으면 그것, 없으면 모두의 작전
+  const tacticOf = a => (run && run.tactics && a && run.tactics[a.rsp || a.sp]) || tactic();
+  const TACTIC_NAMES = { follow: '나를 따라와', free: '각자 행동', wait: '여기서 기다려', attack: '적을 공격해', passive: '먼저 공격하지마', flee: '여기서 도망쳐' };
   const TACTIC_DESC = {
     follow: '리더 뒤에 줄지어 따라오고, 나나 동료 가까이 온 적을 가까운 것부터 처리하고 다시 따라온다',
     free: '보이는 적을 각자 쫓아가 싸우고, 적이 없으면 근처로 모인다',
     wait: '그 자리에서 기다린다. 옆에 온 적에게만 반격한다',
     attack: '멀리 있는 적도 쫓아가 공격한다. 보스가 보이면 보스부터 (보스 방에서 유용)',
     passive: '리더가 공격한 적만 상대하고, 그 밖에는 따라오기만 한다',
+    flee: '싸우지 않고 보이는 적에게서 멀어진다. 적이 없으면 리더를 따라온다',
   };
   // 동료 창: 동료의 HP·상태·지닌 물건·기술 PP·능력 변화, 작전
   function partyMenu() {
@@ -1616,13 +1698,14 @@ const Dungeon = (() => {
     const row = a => {
       const pc = a.fainted ? 0 : a.hp / a.maxhp * 100;
       return `<div class="row pm-row${a.fainted ? ' out' : ''}">${portraitImg(looksOf(a), 'portrait xs', a.fainted ? 'Pain' : 'Normal', a.shiny)}
-        <span class="grow"><b>${esc(nm(a))}</b> Lv${a.lv}${isSupport(a) ? ' <span class="dim">🛡 지원</span>' : ''} ${a.fainted ? '<span class="warn">쓰러짐</span>' : `HP ${a.hp}/${a.maxhp} <span class="bar small"><i style="width:${pc}%;background:${pc > 50 ? '#4de36b' : pc > 20 ? '#f5d142' : '#f55'}"></i></span>${a.status ? ` <span class="warn">${STATUS_NAMES[a.status]}</span>` : ''}${D.mons.includes(a) ? ` <span class="dim">· ${cheb(a, P())}칸 떨어짐</span>` : ''}`}</span></div>`;
+        <span class="grow"><b>${esc(nm(a))}</b> Lv${a.lv} <span class="tag">${TACTIC_NAMES[tacticOf(a)]}</span>${isSupport(a) ? ' <span class="dim">🛡 지원</span>' : ''} ${a.fainted ? '<span class="warn">쓰러짐</span>' : `HP ${a.hp}/${a.maxhp} <span class="bar small"><i style="width:${pc}%;background:${pc > 50 ? '#4de36b' : pc > 20 ? '#f5d142' : '#f55'}"></i></span>${a.status ? ` <span class="warn">${STATUS_NAMES[a.status]}</span>` : ''}${D.mons.includes(a) ? ` <span class="dim">· ${cheb(a, P())}칸 떨어짐</span>` : ''}`}</span></div>`;
     };
     UI.open({ title: '🤝 동료 · 작전', wide: true,
-      html: `<div class="row"><span class="grow">지금 작전: <b>${TACTIC_NAMES[tactic()]}</b> <span class="dim">${TACTIC_DESC[tactic()]}</span></span></div>
+      html: `<div class="row"><span class="grow">모두의 작전: <b>${TACTIC_NAMES[tactic()]}</b> <span class="dim">${TACTIC_DESC[tactic()]}</span></span></div>
         ${run.party.map(row).join('')}`,
       choices: [{ label: '📊 탐험대 상태 보기 (능력치·기술)', fn: () => setTimeout(showStatus, 0) },
-        ...Object.entries(TACTIC_NAMES).map(([k, n]) => ({ label: `${k === tactic() ? '✔ ' : ''}작전: ${n}`, sub: TACTIC_DESC[k], fn: () => { run.tactic = k; log(`🤝 작전: ${n}`, now()); partyMenu(); } })),
+        ...Object.entries(TACTIC_NAMES).map(([k, n]) => ({ label: `${k === tactic() && !Object.keys(run.tactics || {}).length ? '✔ ' : ''}모두: ${n}`, sub: TACTIC_DESC[k], fn: () => { run.tactic = k; run.tactics = {}; saveTactics(); log(`🤝 모두의 작전: ${n}`, now()); partyMenu(); } })),
+        ...liveAllies().map(a => ({ label: `🎯 ${esc(nm(a))}의 작전: ${TACTIC_NAMES[tacticOf(a)]} <span class="dim">(눌러서 바꾸기)</span>`, fn: () => allyTacticMenu(a) })),
         ...run.party.filter(a => Game.save.roster[supportKey(a)]).map(a => ({ label: `${isSupport(a) ? '🛡 지원 위주' : '⚔ 공격 위주'} · ${esc(nm(a))} <span class="dim">(눌러서 ${isSupport(a) ? '공격 위주로' : '지원 위주로'})</span>`,
           sub: hasSupportMove(a) ? '지원 위주: 벽은 끊기기 전에 다시 깔고, 능력 올리기는 +6까지, 회복은 HP 60%부터, 유리한 날씨는 바로. 할 일이 없으면 공격' : '⚠ 회복·벽·능력 올리기·날씨 기술이 없어서 지원 위주로 바꿔도 달라지지 않아요',
           fn: () => { const ch = Game.save.roster[supportKey(a)]; if (ch.support) delete ch.support; else ch.support = true; Game.persist(); log(`🤝 ${jo(nm(a), '은')} ${ch.support ? '지원 위주로' : '공격 위주로'} 싸운다.`, now()); partyMenu(); } })),
@@ -1631,6 +1714,16 @@ const Dungeon = (() => {
         ...(liveAllies().length ? [{ label: '🎁 동료 지닌 물건 바꾸기', fn: () => pickAlly('누구의 지닌 물건을 바꿀까?', allyHeld) },
           { label: '📘 동료 기술 바꾸기', fn: () => pickAlly('누구의 기술을 바꿀까?', allyMoves) }] : []),
         { label: '닫기', fn: () => {} }] });
+  }
+  // 바꾼 작전을 이어하기 기록에 바로 남긴다 (새로고침해도 그대로)
+  function saveTactics() { const sr = Game.save.run; if (sr && sr.dungeon === run.dungeon) { sr.tactic = run.tactic || null; sr.tactics = run.tactics || null; Game.persist(); } }
+  // 동료 한 마리의 작전 (v1.02)
+  function allyTacticMenu(a) {
+    const key = a.rsp || a.sp, cur = (run.tactics || {})[key];
+    UI.open({ title: `🎯 ${esc(nm(a))}의 작전`, wide: true,
+      choices: [{ label: `${!cur ? '✔ ' : ''}모두의 작전을 따른다 (${TACTIC_NAMES[tactic()]})`, fn: () => { if (run.tactics) delete run.tactics[key]; saveTactics(); log(`🤝 ${jo(nm(a), '은')} 모두의 작전을 따른다.`, now()); partyMenu(); } },
+        ...Object.entries(TACTIC_NAMES).map(([k, n]) => ({ label: `${cur === k ? '✔ ' : ''}${n}`, sub: TACTIC_DESC[k], fn: () => { (run.tactics = run.tactics || {})[key] = k; saveTactics(); log(`🤝 ${nm(a)}의 작전: ${n}`, now()); partyMenu(); } })),
+        { label: '돌아간다', fn: partyMenu }], cancel: partyMenu });
   }
   function pickAlly(title, then) {
     const list = liveAllies();
@@ -1646,8 +1739,12 @@ const Dungeon = (() => {
       takeFromBag(i); if (old) run.bag.push({ id: old, n: 1 });
       a.held = id; log(`${jo(nm(a), '은')} ${jo(ITEMS[id].n, '을')} 지녔다.`, now()); formCheck(a); allyHeld(a);
     };
+    const own = id => !!(ITEMS[id].hold && ITEMS[id].hold.only && ITEMS[id].hold.only.includes(a.sp));
+    list.sort((x, y) => own(y.b.id) - own(x.b.id));   // 이 동료의 전용 도구를 맨 위에
     UI.open({ title: `🎁 ${esc(nm(a))}의 지닌 물건: ${a.held ? ITEMS[a.held].icon + ' ' + esc(ITEMS[a.held].n) : '없음'}`, wide: true,
-      choices: [...list.map(({ b, i }) => ({ label: `${ITEMS[b.id].icon} ${esc(ITEMS[b.id].n)}`, sub: esc(heldBlockReason(ab, b.id) || ITEMS[b.id].d), disabled: !!heldBlockReason(ab, b.id), fn: () => swap(i) })),
+      html: list.length > 5 ? '<input class="held-q" placeholder="도구 이름·효과로 찾기" autocomplete="off" style="width:100%;margin-bottom:6px">' : '',
+      onOpen: (box, m) => { const q = box.querySelector('.held-q'); if (q) q.oninput = () => { const v = q.value.trim().toLowerCase(); m.items.forEach(b => { b.hidden = !!v && !b.textContent.toLowerCase().includes(v) && !/돌아간다|빼서/.test(b.textContent); }); }; },
+      choices: [...list.map(({ b, i }) => ({ label: `${ITEMS[b.id].icon} ${esc(ITEMS[b.id].n)}${sigTag(b.id)}`, sub: esc(heldBlockReason(ab, b.id) || ITEMS[b.id].d), disabled: !!heldBlockReason(ab, b.id), fn: () => swap(i) })),
         ...(a.held ? [{ label: '지닌 물건을 빼서 가방에 넣는다', disabled: run.bag.length >= bagMax(), sub: run.bag.length >= bagMax() ? '가방이 가득 찼다' : '', fn: () => { run.bag.push({ id: a.held, n: 1 }); log(`${nm(a)}의 ${jo(ITEMS[a.held].n, '을')} 가방에 넣었다.`, now()); a.held = null; formCheck(a); allyHeld(a); } }] : []),
         { label: '돌아간다', fn: partyMenu }] });
   }
@@ -1679,11 +1776,11 @@ const Dungeon = (() => {
   }
   function aiTarget(e) {
     if (e.ally) {
-      const lead = P(), t = tactic();
+      const lead = P(), t = tacticOf(e);
       // 따라와: 리더나 동료(자기 포함) 가까이 온 적을 가까운 것부터 처리한 뒤 다시 따라간다
       const near = m => cheb(m, lead) <= 3 || allies().some(a => cheb(m, a) <= 2);
       const ok = {
-        follow: m => cheb(m, e) <= ALLY_SIGHT && near(m),
+        follow: m => cheb(m, e) <= ALLY_SIGHT && (near(m) || (m.hitParty != null && D.turn - m.hitParty <= 5)),   // 가까이 온 적 + 최근에 탐험대를 공격한 적 (멀리서 쏘는 적, 물러나는 리더를 쫓는 적)
         free: m => cheb(m, e) <= ALLY_SIGHT,
         wait: m => cheb(m, e) <= 1,
         attack: m => cheb(m, e) <= ALLY_SIGHT_FAR,
@@ -1720,13 +1817,25 @@ const Dungeon = (() => {
   }
   // 이번 턴에 움직인 자리 (뒤따르는 동료가 그 자리로 들어간다)
   function markMoved(c, fx, fy) { c.trail = { x: fx, y: fy, turn: D.turn }; }
+  // 여기서 도망쳐 (v1.02): 보이는 적에게서 가장 멀어지는 칸으로 (같으면 리더 쪽). 적이 없으면 리더를 따라온다
+  function fleeStep(a) {
+    if (a.charging) a.charging = null;
+    const foes = D.mons.filter(m => !m.npc && !m.ally && m.hp > 0 && cheb(m, a) <= ALLY_SIGHT && los(a.x, a.y, m.x, m.y));
+    if (!foes.length) { followLeader(a); return; }
+    const lead = P(), score = (x, y) => Math.min(...foes.map(m => Math.max(Math.abs(m.x - x), Math.abs(m.y - y)))) * 10 - Math.max(Math.abs(lead.x - x), Math.abs(lead.y - y));
+    let best = null, bs = score(a.x, a.y);
+    for (let d = 0; d < 8; d++) { const [dx, dy] = DIRS[d]; if (!canStep(a, dx, dy)) continue; const s = score(a.x + dx, a.y + dy); if (s > bs) { bs = s; best = [dx, dy]; } }
+    if (!best) return;
+    const fx = a.x, fy = a.y; a.x += best[0]; a.y += best[1]; a.dir = dirIndex(best[0], best[1]); schedMove(a, fx, fy); markMoved(a, fx, fy);
+  }
   // 동료가 싸울 상대가 없으면 앞사람을 따라간다: 리더 → 동료1 → 동료2 … 줄지어 (멀리 떨어졌으면 한 턴에 두 칸)
   function followLeader(a) {
     if (a.swapped === D.turn) return;   // 방금 리더와 자리를 바꿨다
-    if (tactic() === 'wait') return;   // 여기서 기다려
+    const tc = tacticOf(a);
+    if (tc === 'wait') return;   // 여기서 기다려
     const order = (D.allyOrder || allies()).filter(m => m.hp > 0 && D.mons.includes(m));
     const k = order.indexOf(a), prev = k > 0 ? order[k - 1] : P();
-    const free = tactic() === 'free' || tactic() === 'attack', fx = a.x, fy = a.y;
+    const free = tc === 'free' || tc === 'attack', fx = a.x, fy = a.y;
     const d = cheb(a, prev);
     if (free && d <= 3) return;   // 각자 행동: 너무 멀어지지만 않게
     // 앞사람이 이번 턴에 비운 칸으로 바로 들어간다
@@ -1802,9 +1911,16 @@ const Dungeon = (() => {
       } else if (R.screen) {   // 벽: 싸우는 중이고 아직 없으면 (오로라베일은 설경일 때만)
         if (foe && (!R.needWx || weatherNow() === R.needWx) && who.some(m => screenKeys(R).some(k => (m[k] || 0) <= (sup ? 2 : 0)))) s = sup ? 85 : boss ? 50 : 15;   // 지원 위주: 2턴 남으면 미리 다시
       } else if (o.m.sc && o.m.sc.some(([, ch]) => ch > 0) && !o.m.ss) {   // 능력 올리기: 아직 덜 오른 대상이 있으면
+        // 얼마나 오르는지와 쓸모 (v0.102 보강): 그 포켓몬이 쓰는 공격 쪽(물리면 공격, 특수면 특수공격)이 오르면 더 높게.
+        //  예전에는 오를 대상 수만 세어서 아로마미스트와 데코레이션이 같은 점수였고, 먼저 있는 아로마미스트만 썼다
         const cap = sup ? 6 : boss ? 4 : AI_STAGE_LIMIT;
-        const need = who.filter(m => o.m.sc.some(([st, ch]) => ch > 0 && (m.stages[st] || 0) < cap)).length;
-        if (foe && need) s = sup ? 70 + need * 5 : (boss ? 40 : 10) + need * 5;
+        const uses = (m, c) => m.moves.some(x => DATA.moves[x.id] && DATA.moves[x.id].p > 0 && DATA.moves[x.id].c === c);
+        let val = 0;
+        for (const m of who) for (const [st, ch] of o.m.sc) {
+          const g = ch > 0 ? Math.min(ch, cap - (m.stages[st] || 0)) : 0; if (g <= 0) continue;
+          val += g * (st === 2 ? (uses(m, 2) ? 1.5 : 0.3) : st === 4 ? (uses(m, 3) ? 1.5 : 0.3) : 1);
+        }
+        if (foe && val > 0) s = Math.min(95, sup ? 65 + val * 3 : (boss ? 35 : 8) + val * 3);
       }
       if (s && (!best || s > best.s)) best = { ...o, s };
     }
@@ -1821,6 +1937,7 @@ const Dungeon = (() => {
     if (e.napping) return;
     if (!canAct(e)) return;
     if (e.moveOnly && (e.charging || e.rampage)) return;
+    if (e.ally && tacticOf(e) === 'flee') { fleeStep(e); return; }   // 여기서 도망쳐: 싸우지 않는다
     const tg = aiTarget(e);
     if (!tg) {
       if (e.charging || e.rampage) { if (e.rampage) rampageStep(e); else useMove(e, e.charging.slot, e.dir, { release: true, free: true }); return; }
@@ -1886,7 +2003,7 @@ const Dungeon = (() => {
       if (dis.length && Math.random() < rate * nerve) { const o = pick(dis); useMove(e, o.i, o.m.r === 'r' ? e.dir : confuse(e, dirIndex(dx, dy))); return; }
     }
     // 동료는 상대에게 가장 효과적인 공격을 고른다 (면역·흡수되는 기술은 쓰지 않는다). 적은 지금처럼 무작위
-    const score = o => moveScore(e, p, o.m);
+    const score = o => moveScore(e, p, o.m) * (MOVE_RULES[o.id]?.pierce && (dx === 0 || dy === 0 || Math.abs(dx) === Math.abs(dy)) ? pierceN(e, dirIndex(dx, dy)) : 1);   // 관통기: 한 줄의 적 수만큼
     const best = list => list.map(o => ({ o, s: score(o) })).filter(x => x.s > 0).sort((a, b) => b.s - a.s)[0]?.o;
     if ((e.ally || smartFoes()) && sees && dist === 1 && diagOK(e.x, e.y, Math.sign(dx), Math.sign(dy))) {
       const dir = confuse(e, dirIndex(dx, dy));
@@ -1914,14 +2031,14 @@ const Dungeon = (() => {
       const proj = usable.filter(o => o.m.c !== 1 && (o.m.r === 'p' || (o.m.r === 'f' && (MOVE_RULES[o.id] || {}).reach >= dist)));
       const pc = e.ally || smartFoes() ? best(proj) : pick(proj);
       const rate = e.ally ? (stuck ? 1 : 0.6) : smartFoes() ? 0.8 : 0.45;
-      if (pc && Math.random() < rate * nerve && lineClear(e, dirIndex(dx, dy), dist)) { useMove(e, pc.i, dirIndex(dx, dy)); return; }
+      if (pc && Math.random() < rate * nerve && (lineClear(e, dirIndex(dx, dy), dist) || MOVE_RULES[pc.id]?.pierce)) { useMove(e, pc.i, dirIndex(dx, dy)); return; }
     }
     if (sees && !e.moveOnly && dist <= 3) {
       const area = usable.filter(o => o.m.r === 'r' && o.m.c !== 1);
       const ac = e.ally || smartFoes() ? best(area) : pick(area);
       if (ac && Math.random() < (stuck ? 1 : 0.25) * nerve && los(e.x, e.y, p.x, p.y)) { useMove(e, ac.i, dirIndex(dx, dy) || 0); return; }
     }
-    if (e.ally && tactic() === 'wait') return;   // 기다리는 동료는 쫓아가지 않는다
+    if (e.ally && tacticOf(e) === 'wait') return;   // 기다리는 동료는 쫓아가지 않는다
     if (stuck) { followLeader(e); return; }   // 막힌 동료: 다른 길로 크게 돌지 않고 줄을 지킨다
     let goal = e.target;
     if (goal && goal.x === e.x && goal.y === e.y) { e.target = null; goal = null; }
@@ -1969,13 +2086,19 @@ const Dungeon = (() => {
     if (e.status && ((it.use === 'cureOne' && it.st === e.status) || it.use === 'cure' || it.use === 'fullheal')) {
       eat(); e.status = null; if (seen(e)) log(`${nm(e)}의 상태가 나았다!`, at); return true;
     }
-    if (it.use === 'stat' && sees && dist <= 3 && !(e.stages[it.st] > 0)) { eat(); statChange(e, it.st, it.v, at, e); return true; }
+    if (it.use === 'stat' && sees && dist <= 3 && !(e.stages[it.st] > 0)) { eat(); statChange(e, it.st, it.v, at, e, STAGE_ITEM_TURNS); return true; }
     if (it.throw && sees && dist > 1 && dist <= 8 && (dx === 0 || dy === 0 || Math.abs(dx) === Math.abs(dy)) && lineClear(e, dirIndex(dx, dy), dist) && Math.random() < 0.5) {
       e.item = null; throwItem(e, id, dirIndex(dx, dy)); return true;
     }
     return false;
   }
   // 직선 기술·던지기가 닿는지 (벽 모서리는 지나간다)
+  // 관통 기술이 이 방향으로 맞힐 적 수 (AI 점수용, 최소 1)
+  function pierceN(c, dir) {
+    let x = c.x, y = c.y, n = 0;
+    for (let i = 0; i < PROJ_RANGE; i++) { x += DIRS[dir][0]; y += DIRS[dir][1]; if (!openAt(x, y)) break; const t = creatureAt(x, y); if (t && hostileTo(c, t)) n++; }
+    return Math.max(1, n);
+  }
   function lineClear(c, dir, dist) {
     let x = c.x, y = c.y;
     for (let i = 1; i < dist; i++) {
@@ -2020,7 +2143,7 @@ const Dungeon = (() => {
       }
       case 'wait': used = true; break;
       case 'item': used = useItem(action.slot, action.mode, action.move, action.ally); break;
-      case 'foot': used = footAction(action.mode, action.slot); break;
+      case 'foot': used = footAction(action.mode, action.slot, action.ally); break;
     }
     if (!used) return false;
     afterPlayer();
@@ -2035,7 +2158,7 @@ const Dungeon = (() => {
     if (front && hostileTo(p, front)) return;
     const vis = hostilesVisible();
     if (mv.r === 'f') {
-      const adj = vis.find(e => Math.max(Math.abs(e.x - p.x), Math.abs(e.y - p.y)) === 1 && diagOK(p.x, p.y, Math.sign(e.x - p.x), Math.sign(e.y - p.y)));
+      const adj = vis.find(e => Math.max(Math.abs(e.x - p.x), Math.abs(e.y - p.y)) === 1 && (diagOK(p.x, p.y, Math.sign(e.x - p.x), Math.sign(e.y - p.y)) || MOVE_RULES[mid]?.reach >= 2));
       if (adj) p.dir = dirIndex(adj.x - p.x, adj.y - p.y);
       else if (MOVE_RULES[mid]?.reach >= 2) {   // 선공기: 직선 2칸의 적 (사이 칸이 비어 있을 때)
         const far = vis.find(e => { const dx = e.x - p.x, dy = e.y - p.y; return Math.max(Math.abs(dx), Math.abs(dy)) === 2 && (dx === 0 || dy === 0 || Math.abs(dx) === Math.abs(dy)) && lineClear(p, dirIndex(dx, dy), 2); });
@@ -2053,6 +2176,7 @@ const Dungeon = (() => {
     p.dir = dir;
     const t = creatureAt(p.x + dx, p.y + dy);
     if (t && t.npc && !t.letPass) { if (diagOK(p.x, p.y, dx, dy)) { talkNpc(t); } return false; }
+    if (p.boundT > 0 && !(t && hostileTo(p, t))) { log(`${jo(nm(p), '은')} 갇혀 있어서 움직일 수 없다! (${p.boundT}턴 남음)`, now()); return false; }
     if (t && hostileTo(p, t)) {
       if (!diagOK(p.x, p.y, dx, dy)) return false;
       if (Game.save.settings.noBumpAttack) {   // 설정: 이동키로 공격하지 않기 (v0.100) — 방향만 돌리고 턴은 쓰지 않는다
@@ -2475,11 +2599,12 @@ const Dungeon = (() => {
     }
     // 동료: 배가 고프지 않은 동안 조금씩 회복 (플레이어와 같은 속도)
     for (const a of allies()) {
-      a.regen = (a.regen || 0) + (a.maxhp / 110 + 0.05) * (abVal(a, 'regen') || 1) * (heldOf(a).regen || 1) * (heldOf(a).sludge && a.types.includes(4) ? 2.5 : 1);   // 검은오물: 독 타입이면 2.5배
+      a.regen = (a.regen || 0) + (a.maxhp / 110 + 0.05) * regenMul(a, heldOf(a)) * (heldOf(a).sludge && a.types.includes(4) ? 2.5 : 1);   // 검은오물: 독 타입이면 2.5배
       if (a.regen >= 1) { const n = Math.floor(a.regen); if (p.belly > 0 && a.hp < a.maxhp) a.hp = Math.min(a.maxhp, a.hp + n); a.regen -= n; }
     }
     p.partners = dungeonById(run.dungeon).pure ? -1 : (run.party || []).length;   // 혼자 탐험 보정 (청정의 탑은 없음): 동료 없이 들어왔을 때만 (동료가 모두 쓰러져도 생기지 않음)
     D.turn++; run.turnsOnFloor++; run.turns = (run.turns || 0) + 1;
+    if (run.turnsOnFloor % ABILITY_RENEW === 0) renewAbilities();   // 층에 들어설 때 발동하는 특성: 같은 층에서 100턴마다 다시
     const WD = windOf(D.dg), wi = WD.warn.indexOf(run.turnsOnFloor);
     if (wi >= 0) {
       Sound.play('wind');
@@ -2508,7 +2633,7 @@ const Dungeon = (() => {
     if (run.turnsOnFloor % 5 === 0) for (const c of [p, ...allies()]) if (heldOf(c).orb && !c.status && c.hp > 0) { log(`${nm(c)}의 ${jo(ITEMS[c.held].n, '이')} 반응했다!`, T.base); inflict(c, heldOf(c).orb, T.base, true); }
     if (p.belly > 0) {
       const ph = heldOf(p);
-      D.regen += (p.maxhp / 110 + 0.05) * (abVal(p, 'regen') || 1) * (ph.regen || 1) * (ph.sludge && p.types.includes(4) ? 2.5 : 1);
+      D.regen += (p.maxhp / 110 + 0.05) * regenMul(p, ph) * (ph.sludge && p.types.includes(4) ? 2.5 : 1);
       if (D.regen >= 1 && p.hp < p.maxhp && p.hp > 0) { const a = Math.floor(D.regen); p.hp = Math.min(p.maxhp, p.hp + a); D.regen -= a; }
       if (D.regen >= 1) D.regen = 0;
     } else if (p.hp > 0) {
@@ -2704,8 +2829,8 @@ const Dungeon = (() => {
         if (m) { m.pp = Math.min(m.max, m.pp + it.v); log(`${DATA.moves[m.id].n}의 PP가 ${it.v} 회복되었다!`, at); }
         break;
       }
-      case 'statRandom': statChange(p, pick([2, 3, 4, 5, 6]), 2, at, p); break;
-      case 'critUp': p.critBoost = 2; p.critT = STAGE_TURNS; log(`${jo(nm(p), '은')} 급소에 맞히기 쉬워졌다! (100턴)`, at); break;
+      case 'statRandom': statChange(p, pick([2, 3, 4, 5, 6]), 2, at, p, STAGE_ITEM_TURNS); break;
+      case 'critUp': p.critBoost = 2; p.critT = STAGE_ITEM_TURNS; log(`${jo(nm(p), '은')} 급소에 맞히기 쉬워졌다! (${STAGE_ITEM_TURNS}턴)`, at); break;
       case 'gummy': {
         setFace('Happy', 1500);
         p.belly = Math.min(100, p.belly + it.belly);
@@ -2737,7 +2862,7 @@ const Dungeon = (() => {
       case 'allsleep': hostilesVisible().forEach(e => inflict(e, 'slp', at, true)); break;
       case 'levelup': if (run.hard) log('하드모드에서는 레벨이 오르지 않는다...', at); else gainExp(Math.max(0, expFor(p.lv + 1) - p.exp), at, true); break;
       case 'fullheal': heal(p, p.maxhp, at); p.status = null; log('몸 상태가 완전히 좋아졌다!', at); break;
-      case 'stat': statChange(p, it.st, it.v, at, p); break;
+      case 'stat': statChange(p, it.st, it.v, at, p, STAGE_ITEM_TURNS); break;
       case 'radar': D.radar = true; log('층의 적과 아이템 위치를 알게 되었다!', at); break;
       case 'trapbust': D.traps = []; log('층의 함정이 모두 사라졌다!', at); break;
       case 'allpar': hostilesVisible().forEach(e => inflict(e, 'par', at, true, p)); break;
@@ -2750,7 +2875,7 @@ const Dungeon = (() => {
     if (!D || busy()) return;
     stopAuto();
     const bag = run.bag, p = P();
-    const heldHtml = p.held ? `<div class="row">지닌 물건: ${ITEMS[p.held].icon} <b>${esc(ITEMS[p.held].n)}</b> <span class="grow dim">${esc(ITEMS[p.held].d)}</span></div>` : '<div class="row dim">지닌 물건 없음</div>';
+    const heldHtml = p.held ? `<div class="row">지닌 물건: ${ITEMS[p.held].icon} <b>${esc(ITEMS[p.held].n)}${sigTag(p.held)}</b> <span class="grow dim">${esc(ITEMS[p.held].d)}</span></div>` : '<div class="row dim">지닌 물건 없음</div>';
     const foot = footItem();
     UI.open({
       title: `가방 (${bag.length}/${bagMax()})`, wide: true, html: heldHtml,
@@ -2764,7 +2889,7 @@ const Dungeon = (() => {
         ...(bag.length > 1 ? [{ def: !foot, label: '↕ 가방 정리 (종류별로 정렬)', fn: () => { sortBag(); openBag(); } }] : []),
         ...bag.map((b, i) => ({
         def: !foot && bag.length <= 1 && i === 0,
-        label: `${ITEMS[b.id].icon} ${esc(ITEMS[b.id].n)}${b.n > 1 ? ' ×' + b.n : ''}`, sub: esc(ITEMS[b.id].d),
+        label: `${ITEMS[b.id].icon} ${esc(ITEMS[b.id].n)}${sigTag(b.id)}${b.n > 1 ? ' ×' + b.n : ''}`, sub: esc(ITEMS[b.id].d),
         fn: () => itemMenu(i),
       }))],
     });
@@ -2788,6 +2913,8 @@ const Dungeon = (() => {
         ...(I.use && I.use !== 'none' ? [{ label: '사용한다', fn: () => I.use !== 'ppOne' ? act({ t: 'foot', mode: 'use' }) : UI.open({
           title: `${I.icon} ${esc(I.n)} — PP를 회복할 기술`,
           choices: [...P().moves.map((m, k) => ({ label: `${esc(DATA.moves[m.id].n)} <span class="dim">PP ${m.pp}/${m.max}</span>`, fn: () => act({ t: 'foot', mode: 'use', slot: k }) })), { label: '돌아간다', fn: footMenu }] }) }] : []),
+        ...(ALLY_USES.includes(I.use) && liveAllies().length ? [{ label: '🤝 동료에게 쓴다', fn: () => footAllyPick(I, footMenu) }] : []),
+        ...(it.id === 'reviver' && downAllies().length ? [{ label: '🌰 쓰러진 동료를 되살린다', fn: () => UI.open({ title: '🌰 부활씨 — 누구를 되살릴까?', choices: [...downAllies().map(a => ({ label: esc(nm(a)), fn: () => act({ t: 'foot', mode: 'revive', ally: run.party.indexOf(a) }) })), { label: '돌아간다', fn: footMenu }], cancel: footMenu }) }] : []),
         { label: '줍는다', disabled: run.bag.length >= bagMax() && !(I.stack && run.bag.some(b => b.id === it.id)), fn: () => act({ t: 'foot', mode: 'pick' }) },
         { label: '가방의 아이템과 바꾼다', disabled: !run.bag.length, fn: () => UI.open({
           title: `무엇과 바꿀까? (${esc(I.n)})`, wide: true,
@@ -2800,7 +2927,13 @@ const Dungeon = (() => {
       cancel: openBag,
     });
   }
-  function footAction(mode, slot) {
+  // 발밑의 아이템을 동료에게 (가방의 '동료에게 쓴다'와 같다)
+  function footAllyPick(I, back) {
+    const go = (a, k) => act({ t: 'foot', mode: 'ally', ally: run.party.indexOf(a), slot: k });
+    const pickMove = a => UI.open({ title: `${I.icon} ${esc(I.n)} — ${esc(nm(a))}의 어느 기술?`, choices: [...a.moves.map((m, k) => ({ label: `${esc(DATA.moves[m.id].n)} <span class="dim">PP ${m.pp}/${m.max}</span>`, fn: () => go(a, k) })), { label: '돌아간다', fn: back }], cancel: back });
+    UI.open({ title: `${I.icon} ${esc(I.n)} — 누구에게?`, choices: [...liveAllies().map(a => ({ label: `${esc(nm(a))} <span class="dim">HP ${a.hp}/${a.maxhp}${a.status ? ' · ' + STATUS_NAMES[a.status] : ''}</span>`, fn: () => (I.use === 'ppOne' ? pickMove(a) : go(a)) })), { label: '돌아간다', fn: back }], cancel: back });
+  }
+  function footAction(mode, slot, ally) {
     const p = P(), it = footItem(); if (!it) return false;
     const I = ITEMS[it.id];
     if (mode === 'pick') {
@@ -2823,11 +2956,11 @@ const Dungeon = (() => {
       throwItem(p, it.id, p.dir);
       return true;
     }
-    if (mode === 'use') {
-      // 발밑의 아이템을 잠깐 가방 끝에 넣고 그대로 쓴다 (가방이 가득 차 있어도). 못 쓰면 다시 바닥에 둔다
+    if (mode === 'use' || mode === 'ally' || mode === 'revive') {
+      // 발밑의 아이템을 잠깐 가방 끝에 넣고 그대로 쓴다 (가방이 가득 차 있어도). 못 쓰면 다시 바닥에 둔다. ally·revive: 동료에게 (v0.102 보강)
       const one = { id: it.id, n: 1 };
       run.bag.push(one);
-      const ok = useItem(run.bag.length - 1, 'use', slot);
+      const ok = mode === 'use' ? useItem(run.bag.length - 1, 'use', slot) : useItem(run.bag.length - 1, mode, slot, ally);
       const k = run.bag.indexOf(one); if (k >= 0) run.bag.splice(k, 1);
       if (!ok) return false;
       if (it.n > 1) it.n--; else D.items = D.items.filter(i => i !== it);
@@ -2849,8 +2982,9 @@ const Dungeon = (() => {
       if (!spot) { log('되살릴 자리가 없다.', now()); return false; }
       takeFromBag(slot);
       Object.assign(a, { fainted: false, dead: false, deadAt: 0, hp: a.maxhp, status: null, statusT: 0, stages: {}, stageT: {}, x: spot.x, y: spot.y, tween: null, act: null, charging: null, rampage: null, recharge: false, struck: new Set(), target: null });
+      a.stageS = {}; refillPP(a);
       D.corpses = D.corpses.filter(c => c !== a); D.mons.push(a);
-      Sound.play('item', at); log(`부활씨의 힘으로 ${jo(nm(a), '이')} 되살아났다!`, at); popup(a, 'REVIVE', '#ffe066', at + 150);
+      Sound.play('item', at); log(`부활씨의 힘으로 ${jo(nm(a), '이')} 되살아났다! (PP도 모두 회복)`, at); popup(a, 'REVIVE', '#ffe066', at + 150);
       updateTacticBtn(); return true;
     }
     if (a.fainted || !D.mons.includes(a) || !ALLY_USES.includes(it.use)) return false;
@@ -3074,8 +3208,18 @@ const Dungeon = (() => {
   const AUTO_STOP_HP = 0.3;   // 자동 전투는 HP가 이보다 낮으면 멈춘다
   // 자동으로 상대할 수 있는 적 (v0.100): 지금 공격이 닿거나(옆·직선 기술·주변 기술), 바닥으로 걸어가 옆에 설 수 있는 적.
   //  물·용암 웅덩이 한가운데처럼 닿지 않는 적은 무시하고 자동 이동을 이어 간다 (가까워져서 닿게 되면 그때 싸운다)
+  // 선공기(앞 2칸)로 지금 칠 수 있는지: 바로 옆(벽 모서리 너머 대각선 포함), 또는 직선 2칸 (사이 칸이 비었거나 동료)
+  const reachSlots = p => p.moves.map((m, i) => i).filter(i => { const m = p.moves[i]; return m.pp > 0 && DATA.moves[m.id] && DATA.moves[m.id].r === 'f' && MOVE_RULES[m.id]?.reach >= 2 && !repeatBlocked(p, m.id, D.turn); });
+  function reachHit(p, f) {
+    const dx = f.x - p.x, dy = f.y - p.y, dist = Math.max(Math.abs(dx), Math.abs(dy));
+    if (dist === 1) return true;
+    if (dist !== 2 || !(dx === 0 || dy === 0 || Math.abs(dx) === Math.abs(dy))) return false;
+    const sx = Math.sign(dx), sy = Math.sign(dy), mx = p.x + sx, my = p.y + sy, mid = creatureAt(mx, my);
+    return openAt(mx, my) && (!mid || (party(p) && party(mid))) && diagOK(p.x, p.y, sx, sy) && diagOK(mx, my, sx, sy);
+  }
   function canHitNow(p, f) {
     const dx = f.x - p.x, dy = f.y - p.y, dist = Math.max(Math.abs(dx), Math.abs(dy)), dir = dist ? dirIndex(dx, dy) : 0;
+    if (dist <= 2 && reachSlots(p).length && reachHit(p, f)) return true;
     if (dist === 1) return diagOK(p.x, p.y, Math.sign(dx), Math.sign(dy));
     const has = r => p.moves.some(m => m.pp > 0 && DATA.moves[m.id] && DATA.moves[m.id].r === r && DATA.moves[m.id].c !== 1);
     if ((dx === 0 || dy === 0 || Math.abs(dx) === Math.abs(dy)) && dist <= PROJ_RANGE && has('p') && lineClear(p, dir, dist)) return true;
@@ -3094,13 +3238,18 @@ const Dungeon = (() => {
     if (!tgt) { for (const f of foes) { const ph = approachPath(p, f); if (ph && (!path || ph.len < path.len)) { path = ph; tgt = f; } } }
     const dx = tgt.x - p.x, dy = tgt.y - p.y, dist = Math.max(Math.abs(dx), Math.abs(dy));
     const cands = [{ slot: -1, s: moveScore(p, tgt, NORMAL_ATTACK) }];
-    p.moves.forEach((m, i) => { if (m.pp > 0 && !selfKOBlocked(p, m.id) && !repeatBlocked(p, m.id, D.turn)) { const mv = DATA.moves[m.id]; cands.push({ slot: i, mv, s: moveScore(p, tgt, mv) * (mv.r === 'r' ? 1.1 : 1) }); } });
-    const dir = dirIndex(dx, dy);
+    const dir = dirIndex(dx, dy), alignedT = dx === 0 || dy === 0 || Math.abs(dx) === Math.abs(dy);
+    p.moves.forEach((m, i) => { if (m.pp > 0 && !selfKOBlocked(p, m.id) && !repeatBlocked(p, m.id, D.turn)) { const mv = DATA.moves[m.id]; cands.push({ slot: i, mv, s: moveScore(p, tgt, mv) * (mv.r === 'r' ? 1.1 : 1) * (MOVE_RULES[m.id]?.pierce && alignedT ? pierceN(p, dir) : 1) }); } });
     if (dist === 1 && diagOK(p.x, p.y, Math.sign(dx), Math.sign(dy))) {
       const best = cands.filter(c => c.slot < 0 || c.mv.r !== 's').sort((a, b) => b.s - a.s)[0];
       p.dir = dir;
       act(best.slot < 0 ? { t: 'attack' } : { t: 'skill', slot: best.slot, autoFace: false });
       return;
+    }
+    // 선공기 (v0.102 보강): 2칸 앞이면 다가가지 않고 바로, 벽 모서리 너머 바로 옆 대각선도
+    if (dist <= 2 && reachHit(p, tgt)) {
+      const rs = new Set(reachSlots(p)), best = cands.filter(c => c.slot >= 0 && rs.has(c.slot)).sort((a, b) => b.s - a.s)[0];
+      if (best && best.s > 0) { p.dir = dir; act({ t: 'skill', slot: best.slot, autoFace: false }); return; }
     }
     const aligned = dx === 0 || dy === 0 || Math.abs(dx) === Math.abs(dy);
     if (aligned && dist <= PROJ_RANGE && lineClear(p, dir, dist)) {
@@ -3188,6 +3337,7 @@ const Dungeon = (() => {
     if (D.prompts.length) D.prompts.shift()();
     else if (D.auto) autoTick();
     else if (pendingKey) { const k = pendingKey; pendingKey = null; handleKey(k); }
+    else if (heldMove.size && !turnHeld.size && !moveTimer && performance.now() - moveHeldAt >= HOLD_WALK_MS) { const d = heldDir(); if (d != null) handleKey({ dir: d }); }   // 방향 키를 누르고 있으면 걷기가 끝나는 대로 다음 칸 (OS 키 반복을 기다리지 않는다)
   }
 
   // 화면 세로 중심 (캔버스 좌표). 휴대폰은 위의 상태 창과 아래 메시지 창이 화면을 가리므로, 그 사이 보이는 곳의 가운데에 캐릭터를 둔다
@@ -3427,7 +3577,7 @@ const Dungeon = (() => {
         <span class="lvl">Lv <b>${p.lv}</b> <span class="exp" title="다음 레벨까지 경험치"><span class="bar small"><i style="width:${p.lv >= MAX_LEVEL ? 100 : clamp(have / need * 100, 0, 100)}%;background:#6cf"></i></span></span></span>
         <span class="hpwrap${lowHp ? ' danger' : ''}">HP <b>${php}</b>/${p.maxhp}<span class="bar"><i style="width:${hpPct}%;background:${hpPct > 50 ? '#4de36b' : hpPct > 20 ? '#f5d142' : '#f55'}"></i></span></span>
         <span class="belly${starving ? ' danger' : ''}">배 <b class="${p.belly <= 20 ? 'warn' : ''}">${Math.ceil(p.belly)}</b>/100</span>
-        ${p.held ? `<span class="held" title="${esc(ITEMS[p.held].d)}">${ITEMS[p.held].icon} ${esc(ITEMS[p.held].n)}</span>` : ''}
+        ${p.held ? `<span class="held" title="${esc(ITEMS[p.held].d)}">${ITEMS[p.held].icon} ${esc(ITEMS[p.held].n)}${sigTag(p.held)}</span>` : ''}
         ${p.status || stg ? `<span class="stgs">${p.status ? `<span class="st">${STATUS_NAMES[p.status]}</span> ` : ''}${stg ? `<span class="sgrid">${stg}</span>` : ''}</span>` : ''}
         ${effs ? `<span class="effs">${effs}</span>` : ''}
         ${(run.party || []).length ? `<span class="party">${run.party.map(a => { const pc = ahp(a) / a.maxhp * 100; return `<span class="pm${a.fainted ? ' out' : ''}" title="${esc(spName(a.sp))} Lv${a.lv} HP ${ahp(a)}/${a.maxhp}${a.status ? ' · ' + STATUS_NAMES[a.status] : ''}"><span class="pmn">${esc(spName(a.sp))}</span>${a.fainted ? '' : timedEffects(a).map(([i, n, tl]) => `<i class="peff" title="${n} ${tl}턴">${i}</i>`).join('')} <span class="bar small"><i style="width:${pc}%;background:${pc > 50 ? '#4de36b' : pc > 20 ? '#f5d142' : '#f55'}"></i></span></span>`; }).join('')}</span>` : ''}
@@ -3478,7 +3628,10 @@ const Dungeon = (() => {
 
   // ───────────────────────── 입력 ─────────────────────────
   // 상하좌우 키를 누르면 잠깐(DIAG_WAIT) 기다렸다가 움직인다: 그 사이 다른 방향 키가 눌리면 대각선 (두 키를 동시에 누르기 쉽게)
-  const DIAG_WAIT = 70;
+  const DIAG_WAIT = 50;
+  // 키보드 이동 (v0.102 보강): 누르고 있으면 HOLD_WALK_MS 뒤부터는 걷는 연출이 끝나는 대로 바로 다음 칸 (예전에는 OS 키 반복 지연(약 0.5초)만큼 멈칫했다)
+  const HOLD_WALK_MS = 180;
+  let moveHeldAt = 0;
   const heldMove = new Map();   // 눌려 있는 상하좌우 키 → 방향
   const turnHeld = new Set();   // 눌려 있는 '방향만 바꾸기' 키 (기본 Shift)
   const turnSrc = new Set();    // 방향 전환 중인 다른 조작 (dpad·vp: 터치 ↻, gp: 컨트롤러) — 격자를 보여 준다
@@ -3523,11 +3676,22 @@ const Dungeon = (() => {
     }
     if (['up', 'down', 'left', 'right'].includes(a)) {
       e.preventDefault();
+      if (e.repeat) return;   // 누르고 있는 동안은 logicTick이 걷는다
+      if (!heldMove.size) moveHeldAt = performance.now();
       heldMove.set(e.code, MOVE_ACTION_DIR[a]);
-      if (heldMove.size >= 2 || e.repeat) { clearTimeout(moveTimer); moveTimer = null; sendKey({ dir: heldDir() ?? MOVE_ACTION_DIR[a] }); return; }
+      if (heldMove.size >= 2) { clearTimeout(moveTimer); moveTimer = null; sendKey({ dir: heldDir() ?? MOVE_ACTION_DIR[a] }); return; }
       clearTimeout(moveTimer); moveFallback = MOVE_ACTION_DIR[a];
       moveTimer = setTimeout(() => { moveTimer = null; sendKey({ dir: heldDir() ?? moveFallback }); }, DIAG_WAIT);
       return;
+    }
+    // 대각선 키(Q·E·Z·C·숫자패드 등, v0.102 보강): 상하좌우처럼 누르고 있으면 바로 이어서 걷는다 (기다리지 않고 바로 첫 칸)
+    if (['upleft', 'upright', 'downleft', 'downright'].includes(a) && !turnHeld.size) {
+      e.preventDefault();
+      if (e.repeat) return;
+      if (!heldMove.size) moveHeldAt = performance.now();
+      heldMove.set(e.code, MOVE_ACTION_DIR[a]);
+      clearTimeout(moveTimer); moveTimer = null;
+      sendKey({ dir: heldDir() ?? MOVE_ACTION_DIR[a] }); return;
     }
     const k = { code: e.code, shift: e.shiftKey, turn: turnHeld.size > 0, key: e.key };
     if (busy()) { pendingKey = k; e.preventDefault(); return; }
@@ -3633,6 +3797,11 @@ const Dungeon = (() => {
     else if (!floorAt(x, y)) rows.push('<p>벽이다.</p>');
     UI.alert('🔍 조사', rows.join('') || `<p>아무것도 없다.${vis ? '' : ' <span class="dim">(지금은 보이지 않는 곳)</span>'}</p>`);
   }
+  // 능력치 (v1.02): 지닌 물건·증표·특성·혼자 탐험 보정까지 반영한 값 (원래 값은 괄호에). 능력 변화(랭크)는 따로
+  function effStat(c, key) {
+    const m = key === 'spe' ? (abVal(c, 'speedMul') || 1) * (heldOf(c).speedMul || 1) * (c.player && c.partners === 0 ? SOLO_STAT_MUL : 1) : statMul(c, key);
+    return Math.abs(m - 1) < 0.001 ? `${c[key]}` : `${Math.floor(c[key] * m)} <span class="dim tiny">(${c[key]})</span>`;
+  }
   const stageText = c => Object.entries(c.stages).filter(([, v]) => v).map(([k, v]) => `${STAT_NAMES[k] || k} ${v > 0 ? '+' : ''}${v}`).join(', ');
   function creatureInfo(c) {
     const st = stageText(c);
@@ -3700,9 +3869,9 @@ const Dungeon = (() => {
       return `<div class="row">${portraitImg(looksOf(p), 'portrait', 'Normal', p.shiny)}<div class="grow"><b>${esc(spName(looksOf(p)))}</b> Lv${p.lv} ${typeBadges(p.types)}
           <div>HP ${p.hp}/${p.maxhp}${lead ? ` · 배 ${Math.floor(p.belly)}/100` : ''}${p.status ? ` · <span class="warn">${STATUS_NAMES[p.status]}</span>` : ''}</div>
           <div class="dim">${lead ? `EXP ${p.lv >= MAX_LEVEL ? '최대' : `${have}/${need}`} · ₽ ${Game.save.money}${run.money ? ` (이번 탐험 +${run.money})` : ''} · ` : ''}특성 ${esc(abilityName(p.ability))} · 지닌 물건 ${p.held ? `${ITEMS[p.held].icon}${esc(ITEMS[p.held].n)}` : '없음'}</div></div></div>
-        <table class="md-tbl">${row('공격', p.atk, stg(p, 2))}${row('방어', p.def, stg(p, 3))}
-          ${row('특수공격', p.spa, stg(p, 4))}${row('특수방어', p.spd, stg(p, 5))}
-          ${row('스피드', p.spe, stg(p, 6))}</table>
+        <table class="md-tbl">${row('공격', effStat(p, 'atk'), stg(p, 2))}${row('방어', effStat(p, 'def'), stg(p, 3))}
+          ${row('특수공격', effStat(p, 'spa'), stg(p, 4))}${row('특수방어', effStat(p, 'spd'), stg(p, 5))}
+          ${row('스피드', effStat(p, 'spe'), stg(p, 6))}</table>
         ${st ? `<p>능력 변화: ${esc(st)}</p>` : ''}
         ${timedEffects(p).length ? `<p>효과: ${timedEffects(p).map(([i, n, tl]) => `${i} ${n} <b>${tl}</b>턴 남음`).join(' · ')}</p>` : ''}
         <div class="cc-moves">${p.moves.map(m => `<div class="move-row">${moveLine(m.id, m.pp, m.max)}</div>`).join('')}</div>
@@ -3943,7 +4112,9 @@ const Dungeon = (() => {
     const vp = document.getElementById('vpad'); if (!vp || !Game.save) return;
     if (placeVpadFn) placeVpadFn();
     vpLabels();
-    const s = vpSet(), pos = { ...VP_POS[vpOrient()], ...((s.pos || {})[vpOrient()] || {}) };
+    // 왼손 모드 (v0.102 보강): 기본 위치를 좌우로 뒤집는다 (조이스틱 오른쪽, ABXY 왼쪽). 직접 옮긴 위치가 있으면 그 위치
+    const s = vpSet(), base = VP_POS[vpOrient()], mir = ([x, y]) => [100 - x, y];
+    const pos = { ...(s.left ? { js: mir(base.js), abxy: mir(base.abxy) } : base), ...((s.pos || {})[vpOrient()] || {}) };
     let js = 140 * s.js / 100, ab = 64 * s.ab / 100;
     const W = vp.clientWidth;
     if (W > 0) {
@@ -3960,14 +4131,14 @@ const Dungeon = (() => {
       const clampX = (x, half) => Math.min(W - half - 2, Math.max(half + 2, x / 100 * W)), clampY = (y, half) => Math.min(H - half - 2, Math.max(half + 2, y / 100 * H));
       let jcx = clampX(jx, js / 2), jcy = clampY(jy, js / 2), acx = clampX(ax, abW / 2), acy = clampY(ay, abW / 2);
       const overlap = Math.abs(jcx - acx) < (js + abW) / 2 + VP_GAP && Math.abs(jcy - acy) < (js + abW) / 2 + VP_GAP;
-      if (overlap) { jcx = VP_GAP + js / 2; acx = W - VP_GAP - abW / 2; jcy = acy = H / 2; }
+      if (overlap) { jcx = VP_GAP + js / 2; acx = W - VP_GAP - abW / 2; jcy = acy = H / 2; if (s.left) { jcx = W - jcx; acx = W - acx; } }
       jx = jcx / W * 100; jy = jcy / H * 100; ax = acx / W * 100; ay = acy / H * 100;
     }
     // ↻ 방향만 바꾸기 버튼: 따로 옮길 수 있다. 기본은 조이스틱 왼쪽 위에서 조금 떨어진 곳
     let fx, fy;
     if (W > 0) {
       const half = 20, jcx = jx / 100 * W, jcy = jy / 100 * H;
-      const [px, py] = pos.face ? [pos.face[0] / 100 * W, pos.face[1] / 100 * H] : [jcx - js * 0.62, jcy - js * 0.62];
+      const [px, py] = pos.face ? [pos.face[0] / 100 * W, pos.face[1] / 100 * H] : [jcx + (s.left ? 1 : -1) * js * 0.62, jcy - js * 0.62];   // 왼손 모드: 조이스틱 오른쪽 위
       fx = Math.min(W - half, Math.max(half, px)) / W * 100; fy = Math.min(H - half, Math.max(half, py)) / H * 100;
     } else [fx, fy] = pos.face || [jx - 8, jy - 30];
     const at = { js: [jx, jy], abxy: [ax, ay], face: [fx, fy] };
@@ -4171,7 +4342,9 @@ const Dungeon = (() => {
     let box = null;   // 고르기 칸을 누르면 창이 먼저 닫히므로, 열 때 잡아 둔 창에서 값을 읽는다
     const savePadForm = () => {
       if (!box) return;
-      const v = { ...vpSet(), js: +box.querySelector('[data-vp=js]').value, ab: +box.querySelector('[data-vp=ab]').value, vib: box.querySelector('[data-vp=vib]').checked,
+      const left = box.querySelector('[data-vp=left]').checked, old = vpSet();
+      const v = { ...old, js: +box.querySelector('[data-vp=js]').value, ab: +box.querySelector('[data-vp=ab]').value, vib: box.querySelector('[data-vp=vib]').checked, left,
+        ...(left !== !!old.left ? { pos: {} } : {}),   // 왼손 모드를 바꾸면 직접 옮긴 위치는 처음으로
         order: [0, 1, 2, 3].map(i => +box.querySelector(`[data-ord="${i}"]`).value),
         btns: Object.fromEntries(['a', 'b', 'x', 'y'].map(k => [k, box.querySelector(`[data-btn="${k}"]`).value])) };
       Game.setSetting('gpBtns', Object.fromEntries(GP_EXTRA.map(([k]) => [k, box.querySelector(`[data-gpb="${k}"]`).value])));
@@ -4185,6 +4358,7 @@ const Dungeon = (() => {
         <div class="row"><span>패드 방식</span><select data-vp="mode"><option value="stick" ${mode === 'stick' ? 'selected' : ''}>조이스틱 + ABXY</option><option value="dpad" ${mode === 'dpad' ? 'selected' : ''}>방향 버튼 (화면 위)</option></select></div>
         <div class="row"><span>조이스틱 크기</span><input type="range" min="60" max="150" step="5" data-vp="js" value="${s.js}"><b class="vp-js">${s.js}%</b></div>
         <div class="row"><span>ABXY 크기</span><input type="range" min="60" max="150" step="5" data-vp="ab" value="${s.ab}"><b class="vp-ab">${s.ab}%</b></div>
+        <label class="row chk"><input type="checkbox" data-vp="left" ${s.left ? 'checked' : ''}> 🫲 왼손 모드 (조이스틱을 오른쪽, ABXY를 왼쪽에. 바꾸면 직접 옮긴 위치는 처음으로)</label>
         <label class="row chk"><input type="checkbox" data-vp="vib" ${s.vib ? 'checked' : ''}> 누를 때 짧은 진동</label>
         <p class="dim">버튼 할당 <span class="dim">(버튼에 두지 않은 행동은 행동 메뉴에 나옵니다)</span></p>
         <div class="vp-btns">${['a', 'b', 'x', 'y'].map(k => `<label><b>${k.toUpperCase()}</b> <select data-btn="${k}">${Object.entries(VP_ACTS).map(([v, [, n]]) => `<option value="${v}" ${s.btns[k] === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>`).join('')}</div>

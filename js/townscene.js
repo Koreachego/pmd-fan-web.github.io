@@ -4,7 +4,7 @@
 'use strict';
 
 const TownScene = (() => {
-  let canvas = null, ctx = null, bg = null, bgKey = '', raf = 0, walkers = [], lastT = 0;
+  let canvas = null, ctx = null, bg = null, bgKey = '', raf = 0, walkers = [], lastT = 0, theme = null;   // theme: 마을 풍경으로 고른 던전의 색 [어두운, 중간, 밝은, 밝은2]
   const VIEW_H = 64;   // 논리 높이 (화면 높이에 맞춰 키운다)
 
   // 시간대: 0 낮 · 1 저녁 · 2 밤 · 3 아침
@@ -13,6 +13,7 @@ const TownScene = (() => {
   const HILL = [['#5fa86b', '#4a8f57'], ['#7a7d5a', '#61654a'], ['#1f3a3d', '#18302f'], ['#6aa47a', '#57906a']];
   const GRASS = ['#78c25a', '#8f9b52', '#2c4a35', '#7cba63'], PATH = ['#d9b77a', '#c99d6a', '#5d5442', '#d6b685'];
 
+  const shade = (hex, f) => { const n = parseInt(hex.slice(1), 16); return '#' + [16, 8, 0].map(s => Math.round(((n >> s) & 255) * f).toString(16).padStart(2, '0')).join(''); };
   // 늘 같은 모양이 나오게 하는 간단한 난수 (집 배치 등)
   const rnd = seed => () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
 
@@ -24,16 +25,18 @@ const TownScene = (() => {
     if (ph === 2) { g.fillStyle = '#fff'; for (let i = 0; i < W / 6; i++) g.fillRect(Math.floor(R() * W), Math.floor(R() * H * 0.5), 1, 1); g.fillStyle = '#fff6c8'; g.beginPath(); g.arc(W * 0.82, 12, 6, 0, Math.PI * 2); g.fill(); }
     else if (ph !== 1) { g.fillStyle = '#ffffffcc'; for (const [x, y, w] of [[0.12, 10, 18], [0.45, 7, 24], [0.74, 14, 16]]) { g.fillRect(Math.floor(W * x), y, w, 4); g.fillRect(Math.floor(W * x) + 4, y - 3, w - 8, 3); } }
     else { g.fillStyle = '#ffdf8a'; g.beginPath(); g.arc(W * 0.8, H * 0.55, 9, 0, Math.PI * 2); g.fill(); }
-    // 언덕 두 겹
+    // 언덕 두 겹 (던전 풍경을 고르면 그 던전의 색, 시간대에 따라 어둡게)
+    const dim = [1, 0.85, 0.55, 0.95][ph];
+    const hill = theme ? [shade(theme[1], dim), shade(theme[0], dim)] : HILL[ph], grass = theme ? shade(theme[3], dim) : GRASS[ph], path = theme ? shade(theme[2], dim) : PATH[ph];
     for (let k = 0; k < 2; k++) {
-      g.fillStyle = HILL[ph][k]; g.beginPath(); g.moveTo(0, H);
+      g.fillStyle = hill[k]; g.beginPath(); g.moveTo(0, H);
       for (let x = 0; x <= W; x += 4) g.lineTo(x, H * (0.55 + k * 0.08) - Math.sin(x / (38 - k * 10) + k * 2) * (6 - k * 2) - Math.sin(x / 13 + k) * 1.5);
       g.lineTo(W, H); g.fill();
     }
     // 땅과 길
     const gy = H - 18;
-    g.fillStyle = GRASS[ph]; g.fillRect(0, gy, W, 18);
-    g.fillStyle = PATH[ph]; g.fillRect(0, gy + 7, W, 7);
+    g.fillStyle = grass; g.fillRect(0, gy, W, 18);
+    g.fillStyle = path; g.fillRect(0, gy + 7, W, 7);
     g.fillStyle = '#00000018'; for (let x = 0; x < W; x += 9) g.fillRect(x, gy + 9 + (x % 2), 3, 1);
     // 집·나무 (길 위쪽 풀밭에)
     const lit = ph === 2 || ph === 1;
@@ -91,7 +94,7 @@ const TownScene = (() => {
     const cw = canvas.clientWidth, ch = canvas.clientHeight; if (!cw || !ch) return;
     const k = ch / VIEW_H, W = Math.ceil(cw / k), H = VIEW_H;
     if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; ctx.imageSmoothingEnabled = false; bgKey = ''; }
-    const ph = phase(), key = W + ':' + ph;
+    const ph = phase(), key = W + ':' + ph + ':' + (theme ? theme.join() : '');
     if (key !== bgKey) { bg = drawBg(W, H, ph); bgKey = key; }
     const dt = lastT ? Math.min(100, t - lastT) : 16; lastT = t;
     step(dt, W);
@@ -109,5 +112,6 @@ const TownScene = (() => {
     if (!raf) { lastT = 0; raf = requestAnimationFrame(frame); }
   }
   function stop() { if (raf) cancelAnimationFrame(raf); raf = 0; }
-  return { show, stop };
+  function setTheme(p) { theme = p && p.length >= 4 ? p : null; }
+  return { show, stop, setTheme };
 })();

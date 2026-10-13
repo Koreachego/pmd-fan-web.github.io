@@ -38,7 +38,15 @@ const Progress = (() => {
   const rogueBest = () => Math.max(0, ...DUNGEONS.filter(d => d.mode === 'rogue' && !d.daily).map(d => S().best[d.id] || 0));
   const shinyN = () => Object.values(S().shinySeen || {}).reduce((a, b) => a + b, 0);
   const maxBoost = () => Math.max(0, ...Object.values(S().roster).flatMap(r => Object.values(r.boost || {})));
-  // prog: [현재, 목표] / reward: 돈과 아이템
+  // 수집 업적 (v0.102 보강): 스타팅(세대별·전체)·전설과 환상 영입, 청정의 탑
+  const STARTERS = { 1: [1, 4, 7], 2: [152, 155, 158], 3: [252, 255, 258], 4: [387, 390, 393], 5: [495, 498, 501], 6: [650, 653, 656], 7: [722, 725, 728], 8: [810, 813, 816], 9: [906, 909, 912] };
+  const GEN_N = ['', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+  const ownsLine = base => [...evoLine(base)].some(x => S().roster[x]);   // 그 진화 계열 중 하나라도 영입
+  const startersOf = g => STARTERS[g].filter(ownsLine).length;
+  let legendIds = null;
+  const legends = () => (legendIds = legendIds || SPECIES_IDS.map(Number).filter(id => DATA.species[id].lg && !NO_RECRUIT.includes(id)));
+  const legendOwned = () => legends().filter(id => S().roster[id]).length;
+  // prog: [현재, 목표] / reward: 돈·아이템(n개)·티켓
   const ACH = [
     { id: 'kill1',    icon: '⚔', n: '첫 승리',         d: '적 포켓몬을 1마리 쓰러뜨린다.', prog: () => [stat('kills'), 1], reward: { money: 100 } },
     { id: 'kill100',  icon: '⚔', n: '백전노장',        d: '적 포켓몬을 100마리 쓰러뜨린다.', prog: () => [stat('kills'), 100], reward: { money: 1000 } },
@@ -76,9 +84,15 @@ const Progress = (() => {
     { id: 'daily10',  icon: '🗓', n: '매일의 습관',     d: '오늘의 도전에 10번 참가한다.', prog: () => [stat('dailies'), 10], reward: { money: 3000, item: 'carbos' } },
     { id: 'dailyAll', icon: '🏆', n: '오늘의 챔피언',   d: '오늘의 도전을 완주한다.', prog: () => [stat('dailyClears'), 1], reward: { money: 3000, item: 'hpup' } },
     { id: 'vitamin',  icon: '🥤', n: '튼튼하게',        d: '영양제로 한 능력치를 최대까지 강화한다.', prog: () => [maxBoost(), VITAMIN_MAX], reward: { money: 3000 } },
+    { id: 'pure99',   icon: '🌲', n: '청정의 탑 정복', d: '청정의 탑 99층을 오른다.', prog: () => [Math.min(99, S().best.purity || 0), 99], reward: { tickets: 100, item: 'rainbowgummy', n: 2 } },
+    ...Object.keys(STARTERS).map(g => ({ id: 'starter' + g, icon: '🌱', n: `${GEN_N[g]}세대 스타팅`, d: `${GEN_N[g]}세대 스타팅 포켓몬 3마리(진화형도 됨)를 모두 영입한다.`, prog: () => [startersOf(g), 3], reward: { money: 5000, item: 'rainbowgummy' } })),
+    { id: 'starterAll', icon: '🌳', n: '스타팅 마스터', d: '1~9세대 스타팅 포켓몬 27마리를 모두 영입한다.', prog: () => [Object.keys(STARTERS).reduce((a, g) => a + startersOf(g), 0), 27], reward: { tickets: 100, item: 'rainbowgummy', n: 3 } },
+    { id: 'legend10', icon: '🐉', n: '전설과의 인연', d: '전설·환상 포켓몬을 10마리 영입한다.', prog: () => [legendOwned(), 10], reward: { tickets: 30, item: 'rainbowgummy' } },
+    { id: 'legend30', icon: '🐲', n: '전설의 수집가', d: '전설·환상 포켓몬을 30마리 영입한다.', prog: () => [legendOwned(), 30], reward: { tickets: 80, item: 'rainbowgummy', n: 2 } },
+    { id: 'legendAll', icon: '👑', n: '신화의 탐험대', d: '전설·환상 포켓몬을 모두 영입한다.', prog: () => [legendOwned(), legends().length], reward: { tickets: 300, item: 'rainbowgummy', n: 5 } },
     { id: 'rich',     icon: '💰', n: '부자',            d: '돈을 50000 포켓 모은다.', prog: () => [S().money, 50000], reward: { item: 'amuletcoin' } },
   ];
-  const rewardText = r => [r.money ? `₽${r.money}` : '', r.item ? `${ITEMS[r.item].icon}${ITEMS[r.item].n}` : '', r.text || ''].filter(Boolean).join(' + ');
+  const rewardText = r => [r.money ? `₽${r.money}` : '', r.item ? `${ITEMS[r.item].icon}${ITEMS[r.item].n}${r.n > 1 ? ' ×' + r.n : ''}` : '', r.tickets ? `🎟 티켓 ${r.tickets}장` : '', r.text || ''].filter(Boolean).join(' + ');
 
   // 새로 달성한 업적을 찾아 보상을 주고 알린다
   function check() {
@@ -92,7 +106,8 @@ const Progress = (() => {
       if (c < g) continue;
       s.ach[a.id] = s.day;
       if (a.reward.money) s.money += a.reward.money;
-      if (a.reward.item) s.storage[a.reward.item] = (s.storage[a.reward.item] || 0) + 1;
+      if (a.reward.item) s.storage[a.reward.item] = (s.storage[a.reward.item] || 0) + (a.reward.n || 1);
+      if (a.reward.tickets) s.tickets = (s.tickets || 0) + a.reward.tickets;
       got.push(a);
     }
     got.forEach((a, i) => setTimeout(() => { UI.toast(`🏆 업적 달성: ${a.n} — ${rewardText(a.reward)}${a.reward.item ? ' (창고로)' : ''}`); Sound.play('achieve'); }, i * 1800));

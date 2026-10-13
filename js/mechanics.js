@@ -194,7 +194,7 @@ function statMul(c, key, brk) {
     if (A.defeatist && c.hp * 2 <= c.maxhp) m *= 0.5;
   } else if (key === 'def') {
     if (A.marvel && c.status) m *= 1.5;
-    if (A.defMul) m *= A.defMul;
+    const dfm = abVal(c, 'defMul'); if (dfm) m *= dfm;   // 풀모피 (그래스필드) 등
   } else if (key === 'spd') {
     const dm = !brk && abVal(c, 'spdMul'); if (dm) m *= dm;
   }

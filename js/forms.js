@@ -78,6 +78,8 @@ const BATTLE_FORMS = {
   718: c => (c.complete || hpRate(c) <= 0.5 ? (c.complete = true, 'zygarde-complete') : null),   // 지가르데: HP 절반 이하면 그 층 동안 퍼펙트폼
   1024: c => 'terapagos-terastal',                                                   // 테라파고스: 던전에서는 늘 테라스탈폼
 };
+// 시작 모습 (v0.102 보강): 캐릭터 탭에서 켜 두면 탐험 첫 층을 이 모습으로 시작한다 (ch.startForm). 그 뒤로는 원래 규칙대로 바뀐다
+const START_FORMS = { 648: { flag: 'pirouette', fi: 'meloetta-pirouette' }, 964: { flag: 'hero', fi: 'palafin-hero' } };
 // 전투 중 모습은 그 특성이 있을 때만 (캐스퐁은 날씨 특성, 나머지는 원래 특성)
 const BATTLE_ABILITY = { 778: 209, 421: 122, 351: 59, 681: 176, 555: 161, 746: 208, 774: 197, 875: 248, 877: 258, 964: 278 };
 

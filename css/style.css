@@ -373,6 +373,9 @@ i.clear { font-style: normal; font-size: 11px; background: #3a9d4d; padding: 1px
 .dg-mons .rcard i { position: absolute; left: 4px; top: 2px; font-style: normal; font-size: 11px; }
 .dg-mons .rcard i.dex-shiny { top: 18px; }
 .rcard.unseen img { filter: grayscale(1) brightness(.45); }
+.mons-row .portrait { flex: none; }
+.mons-row .grow { min-width: 0; }
+.rcard.here { border: 3px solid #ffe14a; box-shadow: 0 0 8px #ffe14acc; background: #ffe14a22; }   /* 던전 정보: 지금 층에 나오는 포켓몬 */
 .rcard.unseen span { color: var(--dim); }
 .dg-items { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 6px 0; font-size: 13px; }
 .dg-item { cursor: pointer; white-space: nowrap; }
@@ -418,7 +421,7 @@ body.touch #actions kbd { display: none; }
 @media (max-width: 800px) {
   #dungeon-screen { height: 100dvh; }
   /* 휴대폰: 탭을 옆으로 넘기지 않게 두 줄 격자로 (예전에는 한 줄 가로 스크롤이라 뒤쪽 탭이 숨어 보이지 않았다) */
-  #town-tabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; padding: 6px; }
+  #town-tabs { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; padding: 6px; }
   #town-tabs button { padding: 7px 1px; font-size: 12px; letter-spacing: -0.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* 캐릭터 카드는 짧게: 능력치·기술은 캐릭터 탭에서 */
   #char-card { padding: 8px 10px; }
@@ -884,7 +887,7 @@ body.phone-land #auto-ind, body.phone-land #wind-ind { left: 50%; transform: tra
 .team-mon { position: relative; display: inline-block; margin-right: 3px; }
 .team-mon.lead .portrait { outline: 2px solid var(--accent); border-radius: 6px; }
 .team-mon i { position: absolute; right: -3px; top: -6px; font-style: normal; font-size: 11px; color: var(--accent); }
-.sig-lv { color: var(--accent); }
+.sig-lv { color: #1b1b1b; background: var(--accent); border-radius: 4px; padding: 0 4px; font-size: 0.9em; }   /* 전용 도구 강화 단계 */
 /* 위험 신호 (v0.100): HP 1/4 이하·배고픔 0 — HUD의 그 칸과 던전 화면 UI 상자(HUD·메시지·얼굴 등)의 테두리가 빨갛게 깜빡인다 */
 @keyframes danger-pulse { 0%, 100% { background: #ff303000; box-shadow: none; } 50% { background: #ff303055; box-shadow: 0 0 0 2px #ff4a4a; } }
 @keyframes danger-border { 0%, 100% { border-color: var(--t-cream); } 50% { border-color: #ff3b3b; } }
@@ -900,3 +903,12 @@ body.phone-land #auto-ind, body.phone-land #wind-ind { left: 50%; transform: tra
 .junk-bar i { display: block; height: 100%; background: linear-gradient(90deg, #f6c445, #ffe58a); }
 /* hidden 속성은 늘 숨긴다 (.row 등의 display:flex가 덮어써서 검색해도 줄이 그대로 보이던 문제) */
 [hidden] { display: none !important; }
+
+/* 던전 정보: 지금 층에 나오는 포켓몬 (테마의 .rcard보다 우선) */
+:is(#town-screen, #modal-root, #title-screen) .rcard.here { border: 3px solid #ffe14a; box-shadow: 0 0 10px #ffe14acc; background: rgba(255, 225, 74, 0.16); }
+
+/* 지닌 물건 고르기의 검색 칸: 긴 선택 목록에 눌려 높이가 0이 되어 보이지 않던 문제 (v0.102 보강) */
+.modal-body:has(.held-q) { flex-shrink: 0; }
+
+/* 능력치 칸: 지닌 물건으로 바뀐 값 (v1.02) */
+.stats b.up { color: #8fe08f; }

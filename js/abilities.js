@@ -156,7 +156,7 @@ const ABILITY_DESC_FILL = {
   274: '바람 기술을 맞으면 데미지를 받지 않고 공격이 올라간다.',
   277: '바람 기술을 맞으면 몸에 전기를 모은다 (다음 전기 기술의 위력이 올라간다).',
   278: '교체되어 물러나면 마이티폼으로 바뀐다.',
-  279: '동료 드닐레이브의 입속에 들어가 안에서 지시를 내린다.',
+  279: '동료 어써러셔의 입속에 들어가 안에서 지시를 내린다.',
   280: '데미지를 받으면 몸에 전기를 모은다 (다음 전기 기술의 위력이 올라간다).',
   281: '쾌청이거나 부스터에너지를 지니고 있으면 가장 높은 능력이 올라간다.',
   282: '일렉트릭필드이거나 부스터에너지를 지니고 있으면 가장 높은 능력이 올라간다.',
@@ -354,9 +354,19 @@ abSet(95, { quickFeet: true });
 ABIL[159] = { ...ABIL[159], chipImmune: true, dungeon: '땅·바위·강철 기술의 위력이 1.2배. 모래바람 데미지를 받지 않는다.' };
 ABIL[142] = { ...ABIL[142], chipImmune: true, dungeon: '가루 기술, 독가시·폭발 함정, 모래바람 데미지를 받지 않는다.' };
 
+// 날씨·필드가 생긴 뒤 원작처럼 바꾼 특성 (v0.102 보강)
+ab_(288, { atkMul: undefined, setWeather: 'sun', wx: { w: 'sun', atkMul: 1.33 }, dungeon: '층에 들어서거나(탐험대) 처음 마주치면(적) 날씨를 쾌청으로 만든다. 쾌청이면 공격이 1.33배.' });   // 진홍빛고동 (코라이돈)
+ab_(282, { bestStatMul: 1.1, ter: { t: 'electric', bestStatMul: 1.3 }, dungeon: '일렉트릭필드 위에서는 가장 높은 능력(공격·방어·특공·특방)이 1.3배. (평소 1.1배)' });   // 쿼크차지
+ab_(179, { defMul: undefined, ter: { t: 'grassy', defMul: 1.5 }, dungeon: '그래스필드 위에서는 방어가 1.5배.' });   // 풀모피
+ab_(245, { setWeather: undefined, hitWeather: 'sand', dungeon: '공격을 받으면 날씨를 모래바람으로 바꾼다.' });   // 모래뿜기
+ab_(269, { typeMul: undefined, hitTerrain: 'grassy', dungeon: '공격을 받으면 발밑을 그래스필드로 바꾼다.' });   // 넘치는씨
+ab_(207, { speedy: undefined, ter: { t: 'electric', speedMul: 2 }, dungeon: '일렉트릭필드 위에서는 스피드가 2배.' });   // 서핑테일
 // 날씨에 따라 달라지는 특성 값
+// 필드에 따라 달라지는 특성 값 (ter: { t: 필드, ... }, v0.102 보강: 필드가 생겨서 쿼크차지·풀모피·서핑테일을 원작처럼)
 function abVal(c, key) {
   const A = abilityOf(c), W = A.wx && wxFor(c) === A.wx.w ? A.wx : null;   // 날씨 고정 전용 도구도 (js/defs.js wxFor)
+  const T = A.ter && typeof terrainOn === 'function' && terrainOn(c, A.ter.t) ? A.ter : null;
+  if (T && T[key] != null) return T[key];
   return W && W[key] != null ? W[key] : A[key];
 }
 
@@ -466,7 +476,9 @@ function abilityExact(r) {
 // 리더 특성의 필드 효과 (소드·실드까지의 첫 번째 포켓몬 효과처럼): 리더가 이 특성이면
 //   lure: 그 타입 포켓몬이 LURE_W배 잘 나온다 (그 층에 나오는 포켓몬 중에서) / drop: 적이 물건을 떨어뜨리는 확률 배수
 const LURE_W = 2;
-const FIELD_ABIL = { 18: { lure: 10 }, 114: { lure: 11 }, 9: { lure: 13 }, 31: { lure: 13 }, 42: { lure: 9 }, 139: { lure: 12 }, 14: { drop: 2 }, 105: { drop: 2 } };
+const FIELD_ABIL = { 18: { lure: 10 }, 114: { lure: 11 }, 9: { lure: 13 }, 31: { lure: 13 }, 42: { lure: 9 }, 139: { lure: 12 }, 14: { drop: 2 }, 105: { drop: 2 },
+  // v0.102 보강: 다른 타입도 (흙먹기 땅·모래의힘 바위·독수 독·저주받은바디 고스트·불가사의부적·벌레의알림 벌레·용의턱 드래곤·페어리오라 페어리·다크오라 악·풍력발전 비행·초식 풀)
+  297: { lure: 5 }, 159: { lure: 6 }, 143: { lure: 4 }, 130: { lure: 8 }, 25: { lure: 7 }, 68: { lure: 7 }, 263: { lure: 16 }, 187: { lure: 18 }, 186: { lure: 17 }, 277: { lure: 3 }, 157: { lure: 12 } };
 const leadField = c => (c && FIELD_ABIL[c.ability]) || {};
 const fieldText = id => { const f = FIELD_ABIL[id]; return !f ? '' : f.lure ? `리더일 때 ${typeName(f.lure)} 타입 포켓몬이 ${LURE_W}배 잘 나온다` : `리더일 때 적이 물건을 떨어뜨리는 확률 ${f.drop}배`; };
 function abilityDesc(id) {

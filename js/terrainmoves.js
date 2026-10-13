@@ -17,3 +17,12 @@ for (const [sp, list] of Object.entries(TERRAIN_LEARN)) {
   s.l.sort((a, b) => a[0] - b[0]);
 }
 if (typeof EGG_MOVES !== 'undefined') for (const [sp, list] of Object.entries(TERRAIN_EGG)) EGG_MOVES[sp] = [...new Set([...(EGG_MOVES[sp] || []), ...list])];
+
+// 불가사의 던전 오리지널 기술 (v0.102 보강): 무속성(타입 0) 물리 기술. 상성·자속 보정 없이 모든 상대에게 보통으로 맞는다
+//  기술머신으로만, 모든 포켓몬이 배울 수 있다 (광역기를 배우지 못하는 물리 포켓몬도 쓸 수 있게). 번호는 원작 기술과 겹치지 않게 2001~
+const PMD_MOVES = {
+  2001: { n: '수평베기', t: 0, p: 65, a: 95, pp: 15, c: 2, r: 'f', fg: [1], d: '앞과 앞 양옆 대각선(3칸)의 상대를 한꺼번에 벤다. 타입이 없어서 상성의 영향을 받지 않는다.' },
+  2002: { n: '진공베기', t: 0, p: 35, a: 100, pp: 15, c: 2, r: 'r', d: '진공의 칼날로 주변(3칸 안)의 모든 상대를 벤다. 위력은 낮지만 타입이 없어서 상성의 영향을 받지 않는다.' },
+};
+for (const [id, m] of Object.entries(PMD_MOVES)) if (!DATA.moves[id]) DATA.moves[id] = { ...m };
+const PMD_TM = Object.keys(PMD_MOVES).map(Number);
