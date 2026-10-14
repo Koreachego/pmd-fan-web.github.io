@@ -914,3 +914,9 @@ body.phone-land #auto-ind, body.phone-land #wind-ind { left: 50%; transform: tra
 
 /* 능력치 칸: 지닌 물건으로 바뀐 값 (v1.02) */
 .stats b.up { color: #8fe08f; }
+/* 동료 순서 바꾸기 (v1.03) */
+.cc-mate-row { display: flex; align-items: flex-start; gap: 4px; }
+.cc-mate-row > .cc-mate { flex: 1; min-width: 0; }
+.mate-order { display: inline-flex; gap: 2px; white-space: nowrap; }
+.mate-order .btn.sm { padding: 2px 7px; min-width: 0; }
+.mate-order .btn[disabled] { opacity: .3; }

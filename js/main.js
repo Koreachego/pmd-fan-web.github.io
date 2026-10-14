@@ -1968,7 +1968,8 @@ const Game = (() => {
     const pl = partyList();
     const one = id => {
       const c = save.roster[id], s = applyBoost(calcStats(id, c.lv, 31), c.boost), mv = c.moves.length ? c.moves : defaultMoves(id, c.lv);
-      return `<details class="cc-mate"><summary>${portraitImg(id, 'portrait xs', 'Normal', c.shiny)} <b>${esc(monName(id))}</b> Lv${c.lv}${c.held ? ` ${ITEMS[c.held].icon}` : ''}</summary>
+      const k = pl.indexOf(id), mvBtns = pl.length > 1 ? `<span class="mate-order"><button class="btn sm ghost" data-act="party-move" data-arg="${id}:-1" title="앞으로"${k ? '' : ' disabled'}>▲</button><button class="btn sm ghost" data-act="party-move" data-arg="${id}:1" title="뒤로"${k < pl.length - 1 ? '' : ' disabled'}>▼</button></span>` : '';
+      return `<div class="cc-mate-row"><details class="cc-mate"><summary>${portraitImg(id, 'portrait xs', 'Normal', c.shiny)} <b>${esc(monName(id))}</b> Lv${c.lv}${c.held ? ` ${ITEMS[c.held].icon}` : ''}</summary>
         <div class="dim">${typeBadges(DATA.species[id].t)} HP ${s.maxhp} · 특성 <span class="ab-link" data-ability="${entryAbility(id, c)}">${esc(abilityName(entryAbility(id, c)))}</span></div>
         <table class="stats">
           <tr><td>HP</td><td>${s.maxhp}</td><td>공격</td><td>${heldStat(s, 'atk', id, c.held)}</td></tr>
@@ -1977,7 +1978,7 @@ const Game = (() => {
         <div class="cc-ability">지닌 물건 ${c.held ? `${ITEMS[c.held].icon} <b>${esc(ITEMS[c.held].n)}${sigLv(c.held) ? ' +' + sigLv(c.held) : ''}</b>` : '<span class="dim">없음</span>'}</div>
         <div class="cc-moves">${mv.map(m => `<div class="move-row clickable" data-move="${m}" data-sp="${id}">${moveLine(m)}${masteryStar(id, m)}</div>`).join('')}</div>
         ${evoOptions(id).filter(e => e.ok).map(e => `<div class="row">${portraitImg(e.to, 'portrait xs', 'Normal', c.shiny)} <span class="grow">✨ <b>${esc(spName(e.to))}</b>(으)로 진화할 수 있어요${e.itemId ? ` <span class="dim">(${esc(ITEMS[e.itemId].n)} 사용)</span>` : ''}</span><button class="btn sm" data-act="evolve-mate" data-arg="${id}:${e.to}">진화</button></div>`).join('')}
-        <div class="btns"><button class="btn sm" data-act="set-moves" data-arg="${id}">📘 기술</button> <button class="btn sm ghost" data-act="nick" data-arg="${id}">✏ 이름</button> <button class="btn sm" data-act="hold" data-arg="${id}">지닌 물건</button>${c.held ? ` <button class="btn sm ghost" data-act="unhold" data-arg="${id}">빼기</button>` : ''} <button class="btn sm ghost danger" data-act="party-remove" data-arg="${id}">동료에서 빼기</button></div></details>`;
+        <div class="btns"><button class="btn sm" data-act="set-moves" data-arg="${id}">📘 기술</button> <button class="btn sm ghost" data-act="nick" data-arg="${id}">✏ 이름</button> <button class="btn sm" data-act="hold" data-arg="${id}">지닌 물건</button>${c.held ? ` <button class="btn sm ghost" data-act="unhold" data-arg="${id}">빼기</button>` : ''} <button class="btn sm ghost danger" data-act="party-remove" data-arg="${id}">동료에서 빼기</button></div></details>${mvBtns}</div>`;
     };
     return `<div class="cc-party"><div class="cc-party-head">🤝 동료 ${pl.length}/${PARTY_MAX}${pl.length < PARTY_MAX ? ' <button class="btn sm ghost" data-act="party-add">＋ 추가</button>' : ''} <button class="btn sm ghost" data-act="teams" title="리더와 동료 구성을 저장하고 불러와요">📋 팀 프리셋</button></div>
       ${pl.length ? `<div class="dim tiny">작전은 던전에서 🤝 동료 버튼(V)으로 바꿔요. 탐험마다 '나를 따라와'로 시작해요.</div>${pl.map(one).join('')}` : `<div class="dim">동료 없이 혼자 탐험합니다. <span title="혼자 탐험 보정">(받는 데미지 ${SOLO_DMG_MUL}배, 능력치 ${SOLO_STAT_MUL}배)</span></div>`}</div>`;
@@ -1986,6 +1987,7 @@ const Game = (() => {
     const pl = partyList(), cand = Object.keys(save.roster).map(Number).filter(id => id !== save.current && !pl.includes(id));
     return `<h3>🤝 동료 <span class="dim">(${pl.length}/${PARTY_MAX} · 일반·테마 던전에 함께 간다. 로그라이크와 오늘의 도전은 혼자)</span></h3>
       <p class="dim">동료는 스스로 싸우고 리더를 따라온다. 경험치도 함께 받는다. 쓰러지면 그 탐험에서만 빠지고, 리더가 쓰러지면 탐험이 끝난다. 동료가 있으면 혼자 탐험 보정(받는 데미지 ${SOLO_DMG_MUL}배, 능력치 ${SOLO_STAT_MUL}배)은 없다. 동료가 모두 쓰러져도 생기지 않는다.</p>
+      ${pl.length > 1 ? `<p class="dim tiny">동료 순서(던전에서 따라오는 순서): ${pl.map((id, k) => `<span class="mate-order">${esc(monName(id))}${k ? ` <button class="btn sm ghost" data-act="party-move" data-arg="${id}:-1" title="앞으로">◀</button>` : ''}${k < pl.length - 1 ? `<button class="btn sm ghost" data-act="party-move" data-arg="${id}:1" title="뒤로">▶</button>` : ''}</span>`).join(' · ')}</p>` : ''}
       <div class="roster">${pl.map(id => `<button class="rcard on" data-act="party-remove" data-arg="${id}" title="눌러서 빼기">${portraitImg(id, 'portrait sm', 'Normal', save.roster[id].shiny)}<span>${esc(monName(id))}</span><span class="dim">Lv${save.roster[id].lv} · 빼기</span>${heldOfRoster(id) ? `<b class="pk-held" title="지닌 물건: ${esc(ITEMS[heldOfRoster(id)].n)}">${Gfx.iconHtml(heldOfRoster(id))}</b>` : ''}</button>`).join('')}
         ${pl.length < PARTY_MAX && cand.length ? '<button class="rcard" data-act="party-add"><span style="font-size:22px">＋</span><span>동료 추가</span></button>' : ''}</div>
       ${!cand.length && !pl.length ? '<p class="dim">던전에서 영입한 포켓몬이 있어야 동료로 데려갈 수 있어요.</p>' : ''}`;
@@ -2354,6 +2356,11 @@ const Game = (() => {
       case 'party-add': return partyAdd();
       case 'evolve-mate': { const [m, to] = String(arg).split(':').map(Number); if (save.roster[m] && m !== save.current) return evolve(to, m); return; }
       case 'party-remove': save.party = partyList().filter(id => id !== +arg); break;
+      case 'party-move': {   // 동료 순서 바꾸기 (v1.03): 빼고 다시 넣지 않아도 되게
+        const [id, d] = arg.split(':').map(Number), pl = partyList(), k = pl.indexOf(id), j = k + d;
+        if (k < 0 || j < 0 || j >= pl.length) return;
+        [pl[k], pl[j]] = [pl[j], pl[k]]; save.party = pl; break;
+      }
       case 'set-moves': return setMoves(arg && save.roster[+arg] ? +arg : save.current);
       case 'code-enter': return enterCode();
       case 'account': return accountDialog();
@@ -2583,7 +2590,14 @@ const Game = (() => {
   const shinyOk = sp => evoFamily(sp).some(x => (save.shinyOwned && save.shinyOwned[x]) || save.roster[x]?.shiny);
   function unlockShiny(sp) {
     if (!DATA.species[sp]?.sh || shinyOk(sp)) return false;
-    save.shinyOwned = save.shinyOwned || {}; save.shinyOwned[sp] = true; persist(); return true;
+    save.shinyOwned = save.shinyOwned || {}; save.shinyOwned[sp] = true;
+    autoShiny(sp);
+    persist(); return true;
+  }
+  // 이로치 자동 적용 (설정, v1.03): 이로치를 얻으면 그 진화 계열의 영입한 포켓몬을 이로치 모습으로 바꾼다
+  function autoShiny(sp) {
+    if (!save.settings.autoShiny) return;
+    for (const x of evoFamily(sp)) { const ch = save.roster[x]; if (ch && !ch.shiny && DATA.species[x]?.sh) ch.shiny = true; }
   }
   // 영입: Lv5로 합류. 영입한 그 포켓몬 하나만 (진화 전 모습은 따로 생기지 않는다). 이로치면 진화 전 모습의 이로치도 해금
   function recruit(c) {
@@ -2592,6 +2606,7 @@ const Game = (() => {
     save.roster[c.sp] = { lv: RECRUIT_LEVEL, exp: expFor(RECRUIT_LEVEL), moves: defaultMoves(c.sp, RECRUIT_LEVEL), ability: ab, shiny: !!c.shiny };
     if (DATA.species[c.sp].lg) noteFirst(isUltra(c.sp) ? 'ultra' : 'legend', { sp: c.sp });   // 엔딩: 처음 함께한 전설
     if (c.shiny) unlockShiny(c.sp);
+    else if (save.settings.autoShiny && shinyOk(c.sp) && DATA.species[c.sp].sh) save.roster[c.sp].shiny = true;   // 이로치를 이미 얻은 계열이면 새로 영입해도 이로치로
     save.recruited = (save.recruited || 0) + 1;
     Progress.check();
     persist();
@@ -2779,6 +2794,7 @@ const Game = (() => {
     if (c === 'play') return `<label class="chk"><input type="checkbox" data-set="autoDescend" ${s.autoDescend ? 'checked' : ''}> 자동 탐색·계단(G)으로 계단에 도착하면 바로 내려가기</label>
       <label class="chk"><input type="checkbox" data-set="noDangerBlink" ${s.noDangerBlink ? 'checked' : ''}> 💓 위험 신호 끄기 <span class="dim">(HP가 1/4 이하거나 배고픔이 0일 때 화면이 깜빡이는 신호)</span></label>
       <label class="chk"><input type="checkbox" data-set="noBumpAttack" ${s.noBumpAttack ? 'checked' : ''}> 🚶 이동키로 공격하지 않기 <span class="dim">(적이 있는 쪽으로 움직이면 공격하지 않고 그쪽을 바라보기만 해요. 공격은 공격 키·버튼으로)</span></label>
+      <label class="chk"><input type="checkbox" data-set="autoShiny" ${s.autoShiny ? 'checked' : ''}> ✨ 이로치 자동 적용 <span class="dim">(이로치를 얻으면 그 진화 계열의 영입한 포켓몬을 바로 이로치 모습으로 바꿔요. 캐릭터 탭에서 언제든 다시 바꿀 수 있어요)</span></label>
       <label class="chk"><input type="checkbox" data-set="noGift" ${s.noGift ? 'checked' : ''}> 💌 감사 선물 받지 않기 <span class="dim">(구조 게시판으로 구조하면 요청자에게 선물 고르는 창이 뜨지 않아요. 그래도 선물이 오면 판매 값만큼 돈으로 받아요. 구조 보답은 그대로)</span></label>
       <p class="dim">자동 판매는 창고 탭, 빠른 사용은 던전의 가방에서 정할 수 있어요.</p>`;
     return `<label class="chk"><input type="checkbox" data-set="origTiles" ${s.origTiles !== false ? 'checked' : ''}> 🗺 원작 던전 그림 (끄면 게임이 직접 그린 단순한 타일)</label>
@@ -3879,7 +3895,7 @@ const Game = (() => {
     if (!so) return;
     try { if (o === 'auto') { so.unlock && so.unlock(); } else so.lock && so.lock(o).catch(() => {}); } catch (e) {}
   }
-  function setSetting(k, v) { save.settings[k] = v; persist(); if (k === 'townBg') TownScene.setTheme(townTheme()); if (k === 'townBgm' && !Dungeon.floor) Sound.town(); if (k === 'orient') { applyOrient(); if (v !== 'auto' && !matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches) UI.toast('화면 방향 고정은 홈 화면에 추가한 앱으로 실행했을 때 적용돼요.'); } Sound.refresh(); applyPad(); if (k === 'origTiles' || k === 'useTileset') Dungeon.rebuildMap(); }   // 던전 그림을 바꾸면 지금 층도 바로 다시 그린다
+  function setSetting(k, v) { save.settings[k] = v; if (k === 'autoShiny' && v) for (const id of Object.keys(save.roster).map(Number)) if (shinyOk(id)) autoShiny(id); persist(); if (k === 'townBg') TownScene.setTheme(townTheme()); if (k === 'townBgm' && !Dungeon.floor) Sound.town(); if (k === 'orient') { applyOrient(); if (v !== 'auto' && !matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches) UI.toast('화면 방향 고정은 홈 화면에 추가한 앱으로 실행했을 때 적용돼요.'); } Sound.refresh(); applyPad(); if (k === 'origTiles' || k === 'useTileset') Dungeon.rebuildMap(); }   // 던전 그림을 바꾸면 지금 층도 바로 다시 그린다
   // 휴대폰 조작: 터치가 되는 기기면 방향 버튼을 보인다. 펜·마우스가 함께 있는 기기는 브라우저가 터치 기기로 알려주지 않기도 해서 넓게 본다
   // (설정에서 '방향 버튼 항상 표시'를 켜면 어떤 기기에서든 보인다)
   const touchDevice = () => (navigator.maxTouchPoints || 0) > 0 || 'ontouchstart' in window || matchMedia('(any-pointer: coarse)').matches;

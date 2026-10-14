@@ -155,7 +155,7 @@ rule([264], { focus: true, text: '지난 행동 이후 공격을 받았다면 �
 // 반동으로 다음 턴 행동 불가
 rule([63, 416, 439, 459, 711, 794, 307, 308, 338, 795], { recharge: true, text: '사용한 다음 턴은 움직일 수 없다.' });
 // 관통 (v1.03): 위력이 아주 세고 패널티가 큰 원거리 기술은 앞 직선 사거리 안의 모든 적에게 맞는다 (같은 편은 지나간다, 패널티는 한 번만)
-const PIERCE_MOVES = [63, 307, 308, 338, 459, 711, 795, 315, 434, 437, 354, 705, 796];
+const PIERCE_MOVES = [63, 307, 308, 338, 459, 711, 795, 315, 437, 354, 705, 796];   // 용성군(434)은 범위기 (아래)
 rule(PIERCE_MOVES, { pierce: true });
 for (const id of PIERCE_MOVES) if (MOVE_RULES[id]) MOVE_RULES[id].text = (MOVE_RULES[id].text ? MOVE_RULES[id].text + ' ' : '') + `앞 직선 ${PROJ_RANGE}칸 안의 모든 적에게 맞는다 (관통).`;
 // 모으기 기술 (1턴째 준비, 다음 행동 때 발사)
@@ -380,6 +380,7 @@ rule([2001], { wide: true, text: '앞 칸과 그 양옆 대각선 칸(3칸)의 �
 rule([2002], { text: '주변(3칸 안)의 모든 상대를 공격한다. 무속성이라 상성·자속 보정이 없다.' });
 // 대지의힘: 주변(3칸 안)의 모든 적에게 (v0.102 보강)
 if (DATA.moves[414]) DATA.moves[414].r = 'r';
+if (DATA.moves[434]) DATA.moves[434].r = 'r';   // 용성군 (v1.03): 하늘에서 운석이 쏟아지니 주변(3칸 안)의 모든 적에게
 // 벌레의야단법석: 벌레 타입에 쓸 만한 범위기가 없어서 하이퍼보이스처럼 주변 범위로 (원작은 상대 하나, v0.77)
 if (DATA.moves[405]) DATA.moves[405].r = 'r';
 // 은빛바람·괴상한바람: 상징적인 바람 기술이라 주변 범위로 (원작은 상대 하나, v0.98)
@@ -389,3 +390,6 @@ for (const id of [419, 229, 861, 859, 830, 845]) if (DATA.moves[id]) DATA.moves[
 // 범위 이름 (선공기는 '앞 2칸')
 const RANGE_SHORT_N = { f: '앞', p: '원거리', r: '주변', s: '자신' };
 const rangeShort = id => (MOVE_RULES[id] && MOVE_RULES[id].reach ? `앞 ${MOVE_RULES[id].reach}칸` : RANGE_SHORT_N[DATA.moves[id].r]);
+// 기본 PP가 5인 공격 기술은 10으로 (v1.03): 전용기·대기술을 PP가 모자라 거의 못 쓰던 문제. 회복·날씨·잠자기 같은 변화 기술은 5 그대로
+const PP5_UP = 10;
+for (const m of Object.values(DATA.moves)) if (m.pp === 5 && m.c !== 1) m.pp = PP5_UP;

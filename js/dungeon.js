@@ -125,6 +125,28 @@ const Dungeon = (() => {
   const FLASH_R = 10;   // 플래시로 밝히는 지도 범위 (칸)
   // 자연 회복 배율 (v0.102 보강): 특성과 지닌 물건(·증표)의 늘어나는 몫을 더한다. 예) 재생력 2배 + 먹다남은음식 2배 = 3배 (예전에는 곱해서 4배)
   const regenMul = (c, H) => 1 + Math.max(0, (abVal(c, 'regen') || 1) - 1) + Math.max(0, (H.regen || 1) - 1);
+  // 이 층의 임무 대상 (v1.03 보강): 아직 끝나지 않았는데 층에 없으면 놓는다. 층을 만들 때와 몇 턴마다 다시 확인해서, 자리를 못 찾았거나 어떤 이유로 사라진 대상도 되살린다
+  function ensureMissionTargets() {
+    if (!D || !run || D.dg.mode !== 'normal' || run.hard) return;
+    for (const ms of Game.save.missions.accepted) {
+      if (ms.dungeon !== D.dg.id || ms.floor !== run.floor || run.done.includes(ms.id)) continue;
+      if (ms.kind === 'find' ? D.items.some(it => it.mission === ms.id) || [P(), ...D.mons].some(c => c && c.item === 'quest') || (run.bag || []).some(b => b.mission === ms.id)
+        : D.mons.some(m => m.mission === ms.id && m.hp > 0)) continue;
+      if (ms.kind === 'outlaw' && D.corpses.some(m => m.mission === ms.id)) continue;   // 쓰러뜨렸으면 그걸로 끝 (missionDone)
+      const t = randomRoomTile({ noItem: true, far: 4 }) || randomRoomTile({ noItem: true }) || randomRoomTile({});
+      if (!t) continue;
+      if (ms.kind === 'rescue' || ms.kind === 'sos') {
+        const c = makeCreature(ms.client, ms.kind === 'sos' ? ms.lv : 5); c.npc = true; c.mission = ms.id; c.x = t.x; c.y = t.y;
+        if (ms.kind === 'sos') { c.shiny = !!ms.shiny; c.friend = true; c.status = 'slp'; c.statusT = 99999; }
+        Sprites.load(ms.client, c.shiny); D.mons.push(c);
+      } else if (ms.kind === 'outlaw') {
+        const c = spawnEnemy(t, ms.target, ms.lv); c.lv = ms.lv; c.hpMul = 1.6; recalc(c); c.hp = c.maxhp;
+        c.outlaw = true; c.mission = ms.id;
+      } else if (ms.kind === 'find') {
+        D.items.push({ ...t, id: 'quest', n: 1, mission: ms.id });
+      }
+    }
+  }
   function floorDrop(lvl) {
     for (let k = 0; k < 8; k++) { const id = rollMega('floor', lvl, D.dg) || pickDrop(D.dropLv, D.dg); if (id || !itemDg()) return id; }
     return 'oran';
@@ -510,21 +532,7 @@ const Dungeon = (() => {
     placeAllies(p);
     // 임무 대상 (하드모드는 임무 없음)
     if (dg.mode === 'normal' && !run.hard) {
-      for (const ms of Game.save.missions.accepted) {
-        if (ms.dungeon !== dg.id || ms.floor !== run.floor || run.done.includes(ms.id)) continue;
-        const t = randomRoomTile({ noItem: true, far: 4 });
-        if (!t) continue;
-        if (ms.kind === 'rescue' || ms.kind === 'sos') {
-          const c = makeCreature(ms.client, ms.kind === 'sos' ? ms.lv : 5); c.npc = true; c.mission = ms.id; c.x = t.x; c.y = t.y;
-          if (ms.kind === 'sos') { c.shiny = !!ms.shiny; c.friend = true; c.status = 'slp'; c.statusT = 99999; }
-          Sprites.load(ms.client, c.shiny); D.mons.push(c);
-        } else if (ms.kind === 'outlaw') {
-          const c = spawnEnemy(t, ms.target, ms.lv); c.lv = ms.lv; c.hpMul = 1.6; recalc(c); c.hp = c.maxhp;
-          c.outlaw = true; c.mission = ms.id;
-        } else if (ms.kind === 'find') {
-          D.items.push({ ...t, id: 'quest', n: 1, mission: ms.id });
-        }
-      }
+      ensureMissionTargets();
     }
     buildMapCanvas();
     computeVis();
@@ -1055,7 +1063,7 @@ const Dungeon = (() => {
         if (amt > 0) { noteHp(user, hitAt + 100, user.hp); user.hp -= amt; user.hurtAt = hitAt + 100; popup(user, '-' + amt, '#ff8a8a', hitAt + 100); log(`${jo(nm(user), '은')} 반동으로 데미지를 입었다.`, hitAt + 100); }
       }
       if (R.rampage) {
-        if (!opts.free) user.rampage = { slot, left: R.rampTurns || rint(1, 2), calm: !!R.noConfuse, uproar: !!R.uproar };
+        if (!opts.free) user.rampage = { slot, id: mid, left: R.rampTurns || rint(1, 2), calm: !!R.noConfuse, uproar: !!R.uproar };
         else if (user.rampage && --user.rampage.left <= 0) {
           const calm = user.rampage.calm; user.rampage = null;
           if (calm) log(`${jo(nm(user), '은')} 소란을 멈췄다.`, hitAt + 150);   // 소란피기: 끝나도 혼란에 빠지지 않는다
@@ -1090,6 +1098,10 @@ const Dungeon = (() => {
 
   // 난동 중: 가까운 적을 자동으로 공격
   function rampageStep(c) {
+    // 난동 중에 기술 칸을 바꿨으면 원래 기술을 따라가고, 잊었으면 난동을 멈춘다 (예전에는 바뀐 칸의 기술을 PP 없이 끝없이 썼다)
+    const rid = c.rampage.id ?? c.moves[c.rampage.slot]?.id, rs = c.moves.findIndex(m => m && m.id === rid);
+    if (rs < 0 || !MOVE_RULES[rid]?.rampage) { c.rampage = null; return false; }
+    c.rampage.slot = rs;
     const foes = [D.player, ...D.mons].filter(m => hostileTo(c, m));
     const adj = foes.find(f => Math.max(Math.abs(f.x - c.x), Math.abs(f.y - c.y)) === 1 && diagOK(c.x, c.y, Math.sign(f.x - c.x), Math.sign(f.y - c.y)));
     let dir = adj ? dirIndex(adj.x - c.x, adj.y - c.y) : c.dir;
@@ -1099,6 +1111,7 @@ const Dungeon = (() => {
       if (al[0]) dir = dirIndex(al[0].x - c.x, al[0].y - c.y);
     }
     useMove(c, c.rampage.slot, confuse(c, dir), { free: true });
+    return true;
   }
 
   const abLog = (c, text, at) => { if (c.player || seen(c)) log(`[${abilityName(c.ability)}] ${text}`, at); };
@@ -1138,8 +1151,9 @@ const Dungeon = (() => {
         abLog(tgt, `${jo(nm(tgt), '은')} 얼음 얼굴로 공격을 막아냈다!`, at); tgt.noice = true; formCheck(tgt, at); blocked = true;
       }
       if (blocked && hits <= 1) return;
-      let total = blocked ? 0 : r.dmg;
-      for (let i = 1; i < hits; i++) total += calcHit(user, tgt, { ...move, a: 0, p: R.escalate ? move.p * (i + 1) : move.p }).dmg || 0;
+      const parts = blocked ? [] : [r.dmg];   // 연속기: 한 대씩 (맞을 때마다 숫자를 띄운다)
+      for (let i = 1; i < hits; i++) parts.push(calcHit(user, tgt, { ...move, a: 0, p: R.escalate ? move.p * (i + 1) : move.p }).dmg || 0);
+      let total = parts.reduce((a, b) => a + b, 0);
       if (R.falseSwipe) total = Math.max(0, Math.min(total, tgt.hp - 1));
       // 앙갚음: 지난 턴 이후 공격으로 받은 데미지의 1.5배 (받은 적이 없으면 실패)
       if (R.comeuppance) {
@@ -1153,7 +1167,9 @@ const Dungeon = (() => {
       log(`${jo(nm(tgt), '은')} ${total}의 데미지를 입었다.` + (hits - blocked > 1 ? ` (${hits - blocked}회)` : ''), at, ec);
       if (total > 0) Sound.play(tgt.player ? 'hurt' : r.crit ? 'crit' : r.eff > 1 ? 'super' : r.eff < 1 ? 'weak' : 'hit', at);
       const hpBefore = tgt.hp;
-      if (total > 0) damage(tgt, total, user, at, r.eff, r.crit, hits > 1);
+      const perHit = parts.length > 1 && !R.falseSwipe && !R.comeuppance;
+      if (perHit) parts.forEach((d, i) => { if (i) Sound.play('hit', at + i * 140); popup(tgt, String(d), r.eff > 1 ? '#ffb02e' : r.eff < 1 ? '#8ea6c8' : tgt.player ? '#ff8a8a' : '#fff', at + i * 140, r.eff < 1 ? 'small' : undefined); });
+      if (total > 0) damage(tgt, total, user, at, r.eff, r.crit, hits > 1, perHit);
       const dealt = Math.max(0, hpBefore - Math.max(0, tgt.hp));   // 실제로 깎인 HP
       if (move.dr && dealt > 0) {
         const amt = Math.max(1, Math.floor(dealt * (move.dr > 0 ? DRAIN_PCT : -move.dr * RECOIL_MUL) / 100));
@@ -1384,7 +1400,7 @@ const Dungeon = (() => {
   const BOSS_PCT_MUL = 0.5;
   const pctDmg = (c, frac) => Math.max(1, Math.floor(c.maxhp * frac * (c.boss ? BOSS_PCT_MUL : 1)));
   // multi: 연속기(2회 이상)로 한꺼번에 받은 데미지. 옹골참·기합의띠는 첫 대만 버티고 다음 대에 쓰러지므로 버티지 못한다 (원작과 같게, v0.91)
-  function damage(c, amt, src, at, eff = 1, crit = false, multi = false) {
+  function damage(c, amt, src, at, eff = 1, crit = false, multi = false, noPop = false) {
     if (c.hp <= 0) return;
     if (src && party(src) && !party(c)) { wakeNap(c, at, true); if (src.player) c.provoked = true; }
     if (src && !party(src) && party(c)) src.hitParty = D.turn;   // 탐험대를 공격한 적 (동료가 멀리서 쏘는 적도 상대하게, v1.02)
@@ -1406,7 +1422,8 @@ const Dungeon = (() => {
     if (A.berserk && wasAboveHalf && c.hp > 0 && c.hp <= c.maxhp / 2 && !c.berserkUsed) { c.berserkUsed = true; abLog(c, `${jo(nm(c), '은')} 발끈했다!`, at); statChange(c, 4, 1, at, c); }
     if (c.player && amt >= c.maxhp * 0.2) setFace('Pain', 1200);
     c.lastHurtSeq = ++D.seq; c.lastHurtBy = src ? src.id : null;
-    if (crit) popup(c, amt + (eff > 1 ? '!!' : '!'), '#ff5ce1', at, 'big');
+    if (noPop) { if (crit) popup(c, '급소!', '#ff5ce1', at, 'small'); }   // 연속기: 한 대씩 따로 띄웠다
+    else if (crit) popup(c, amt + (eff > 1 ? '!!' : '!'), '#ff5ce1', at, 'big');
     else if (eff > 1) popup(c, amt + '!', '#ffb02e', at, 'big');
     else if (eff < 1) popup(c, String(amt), '#8ea6c8', at, 'small');
     else popup(c, String(amt), c.player ? '#ff8a8a' : '#fff', at);
@@ -1525,7 +1542,7 @@ const Dungeon = (() => {
       if (c.shiny && free) D.items.push({ x: c.x, y: c.y, id: rollMega('shiny', c.lv, D.dg) || weighted(rewardPool(D.dropLv + 10, D.dg)), n: 1 });   // 이로치: 보스 보상과 같은 등급
       else if (sig.length && !c.boss && free && Math.random() < SIG_DROP.defeat) D.items.push({ x: c.x, y: c.y, id: pick(sig), n: 1 });
       else if (Math.random() < ENEMY_DROP_CHANCE * (leadField(run.p).drop || 1) && free) { const id = floorDrop(c.lv); D.items.push(id ? { x: c.x, y: c.y, id, n: 1 } : { x: c.x, y: c.y, money: moneyPile(D.lvl) }); }
-      if (c.shiny && Game.unlockShiny(c.sp)) log(`✨ 이제 캐릭터 탭에서 ${jo(spName(c.sp), '과')} 그 진화 계열의 이로치 모습을 고를 수 있다!`, at + 300);
+      if (c.shiny && Game.unlockShiny(c.sp)) log(Game.save.settings.autoShiny ? `✨ ${jo(spName(c.sp), '과')} 그 진화 계열의 이로치를 얻었다! 영입한 포켓몬은 다음 탐험부터 이로치 모습이 된다 (이로치 자동 적용)` : `✨ 이제 캐릭터 탭에서 ${jo(spName(c.sp), '과')} 그 진화 계열의 이로치 모습을 고를 수 있다!`, at + 300);
       if (run.mode === 'normal' && !c.outlaw && !NO_RECRUIT.includes(c.sp) && canRecruit(c.sp, Game.save.roster)) {   // 남은 진화가 없으면 진화 전 모습은 영입하지 않는다 (js/defs.js)
         const rate = recruitRateFor(P().lv, (Game.save.rank || {}).pts) * (DATA.species[c.sp].lg ? 0.5 : 1) * (heldOf(P()).recruitMul || 1);   // 등급 보너스 (v0.99)
         if (Math.random() < rate) D.prompts.push(() => recruitPrompt(c));
@@ -1907,7 +1924,7 @@ const Dungeon = (() => {
       } else if (R.setTerrain) {   // 필드: 싸우는 중이고 아직 아니면, 그 타입 공격 기술을 가진 같은 편이 있으면 (미스트필드는 상태이상을 막으니 늘)
         const T = TERRAINS[R.setTerrain];
         const useful = R.setTerrain === 'misty' || who.some(m => m.moves.some(x => DATA.moves[x.id] && DATA.moves[x.id].p > 0 && DATA.moves[x.id].t === T.type));
-        if (foe && (D.terrain !== R.setTerrain || D.terrainT <= TERRAIN_TURNS / 3) && useful) s = sup ? 75 : boss ? 55 : 35;   // 끝나 가면 다시 깐다
+        if (foe && (D.terrain !== R.setTerrain || D.terrainT <= TERRAIN_TURNS / 3) && useful) s = sup ? 90 : boss ? 65 : 45;   // 끝나 가면 다시 깐다. 모두에게 걸리니 능력 올리기보다 먼저 (v1.03: 지원 위주 포켓몬이 랭크업을 다 쌓은 뒤에야 깔던 문제)
       } else if (R.screen) {   // 벽: 싸우는 중이고 아직 없으면 (오로라베일은 설경일 때만)
         if (foe && (!R.needWx || weatherNow() === R.needWx) && who.some(m => screenKeys(R).some(k => (m[k] || 0) <= (sup ? 2 : 0)))) s = sup ? 85 : boss ? 50 : 15;   // 지원 위주: 2턴 남으면 미리 다시
       } else if (o.m.sc && o.m.sc.some(([, ch]) => ch > 0) && !o.m.ss) {   // 능력 올리기: 아직 덜 오른 대상이 있으면
@@ -1940,7 +1957,7 @@ const Dungeon = (() => {
     if (e.ally && tacticOf(e) === 'flee') { fleeStep(e); return; }   // 여기서 도망쳐: 싸우지 않는다
     const tg = aiTarget(e);
     if (!tg) {
-      if (e.charging || e.rampage) { if (e.rampage) rampageStep(e); else useMove(e, e.charging.slot, e.dir, { release: true, free: true }); return; }
+      if (e.charging || e.rampage) { if (e.rampage) { if (!rampageStep(e)) return; } else useMove(e, e.charging.slot, e.dir, { release: true, free: true }); return; }
       const sup = e.ally && !e.moveOnly && allySupport(e, null);   // 싸움이 없을 때도 다친 같은 편은 회복
       if (sup) { useMove(e, sup.i, e.dir); return; }
       followLeader(e); return;
@@ -1952,7 +1969,7 @@ const Dungeon = (() => {
       useMove(e, e.charging.slot, aligned && (ddx || ddy) ? dirIndex(ddx, ddy) : e.dir, { release: true, free: true });
       return;
     }
-    if (e.rampage) { rampageStep(e); return; }
+    if (e.rampage && rampageStep(e)) return;
     const nerve = abilityOf(p).unnerve ? 0.5 : 1;
     const sees = tg.sees && p.hp > 0;
     if (sees) e.target = { x: p.x, y: p.y };
@@ -2126,7 +2143,7 @@ const Dungeon = (() => {
       const mv = DATA.moves[p.moves[p.charging.slot].id];
       autoFace(p, mv);
       useMove(p, p.charging.slot, confuse(p, p.dir), { release: true, free: true }); used = true;
-    } else if (p.rampage) { rampageStep(p); used = true; }
+    } else if (p.rampage && rampageStep(p)) { used = true; }
     else switch (action.t) {
       case 'move': used = doMove(confuse(p, action.dir)); break;
       case 'attack': useMove(p, -1, confuse(p, p.dir)); used = true; break;
@@ -2604,7 +2621,8 @@ const Dungeon = (() => {
     }
     p.partners = dungeonById(run.dungeon).pure ? -1 : (run.party || []).length;   // 혼자 탐험 보정 (청정의 탑은 없음): 동료 없이 들어왔을 때만 (동료가 모두 쓰러져도 생기지 않음)
     D.turn++; run.turnsOnFloor++; run.turns = (run.turns || 0) + 1;
-    if (run.turnsOnFloor % ABILITY_RENEW === 0) renewAbilities();   // 층에 들어설 때 발동하는 특성: 같은 층에서 100턴마다 다시
+    if (run.turnsOnFloor % ABILITY_RENEW === 0) renewAbilities();
+    if (run.turnsOnFloor % 20 === 0) ensureMissionTargets();   // 임무 대상이 사라졌으면 다시 (v1.03 보강)   // 층에 들어설 때 발동하는 특성: 같은 층에서 100턴마다 다시
     const WD = windOf(D.dg), wi = WD.warn.indexOf(run.turnsOnFloor);
     if (wi >= 0) {
       Sound.play('wind');
