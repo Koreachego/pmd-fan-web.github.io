@@ -286,7 +286,11 @@ const Dungeon = (() => {
     return { w: W, h: H, tiles, room, rooms: [R] };
   }
   // 보스 후보 중 하나: 아직 영입하지 않은 포켓몬이 WANT_W배 잘 나온다 (모두 영입했으면 이로치를 못 얻은 쪽, v0.93)
-  const pickBoss = list => { const want = wantSet(list); return want.size ? weighted(list.map(id => [id, want.has(+id) ? WANT_W : 1])) : pick(list); };
+  //  리더 특성(마중물·피뢰침 등)의 타입도 LURE_W배 (v1.04 보강: 예전에는 일반 적에만 적용돼서 용의 나선탑 중간 보스 케르디오에는 마중물이 듣지 않았다)
+  const pickBoss = list => {
+    const want = wantSet(list), lure = run.mode === 'normal' ? leadField(run.p).lure : 0;
+    return want.size || lure ? weighted(list.map(id => [id, (want.has(+id) ? WANT_W : 1) * (lure && DATA.species[id].t.includes(lure) ? LURE_W : 1)])) : pick(list);
+  };
   function bossSpecies(dg) {
     if (run.floor === dg.floors) {
       const list = bossPool(dg);
