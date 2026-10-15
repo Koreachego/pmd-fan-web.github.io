@@ -36,6 +36,16 @@ const Game = (() => {
     a.ally = true; a.held = ch.held || null; a.shiny = !!ch.shiny; a.tms = (ch.tms || []).slice(); a.selForm = ch.form || undefined;
     return a;
   }
+  // 끝없는 던전 (v1.05): 20층 보스마다 동료 목록 순서대로 한 명씩, 리더와 같은 레벨로 합류 (기술은 그 레벨에 맞게, 지닌 물건은 그대로)
+  function endlessAlly(r) {
+    const have = new Set([(r.p.rsp || r.p.sp), ...(r.party || []).map(a => a.rsp || a.sp)]);
+    const sp = partyList().find(id => !have.has(id)); if (!sp) return null;
+    const ch = save.roster[sp], lv = r.p.lv;
+    const a = makeCreature(sp, lv, { ally: true, exp: expFor(lv), ability: entryAbility(sp, ch) });
+    a.ally = true; a.rsp = sp; a.held = ch.held || null; a.shiny = !!ch.shiny; a.tms = []; a.selForm = ch.form || undefined;
+    a.boost = ch.boost || null; a.scaleBoost = true; recalc(a); a.hp = a.maxhp;
+    return a;
+  }
   // 하드모드 탐험대: 고정 레벨, 레벨이 낮으면 진화 전 모습 (rsp: 캐릭터 기록의 원래 포켓몬)
   // 진화 전 모습으로 들어갈 때 고를 수 있는 특성: 일반 특성 전부 (원래 숨겨진 특성을 쓰고 있었으면 숨겨진 특성도)
   // 기본값은 진화할 때처럼 같은 칸의 특성
@@ -869,7 +879,7 @@ const Game = (() => {
     }
   }
   // 이미 들어가 본 던전은 열리는 순서가 바뀌어도 계속 열려 있다
-  const unlocked = dg => dg.mode === 'rogue' || !dg.req || !!save.cleared[dg.req] || !!save.cleared[dg.id] || !!save.best[dg.id];
+  const unlocked = dg => (dg.mode === 'rogue' && !dg.endless) || !dg.req || !!save.cleared[dg.req] || !!save.cleared[dg.id] || !!save.best[dg.id];
 
   function refreshDay() {
     rollShop();
@@ -905,7 +915,7 @@ const Game = (() => {
   const missionMax = () => RANK_MISSION_MAX[rankLv()], boardSize = () => RANK_BOARD[rankLv()];
   const focusDungeon = () => { const d = save.missionFocus && dungeonById(save.missionFocus); return d && d.mode === 'normal' && unlocked(d) ? d : null; };
   function genMission() {
-    const dgs = DUNGEONS.filter(d => d.mode === 'normal' && unlocked(d));
+    const dgs = DUNGEONS.filter(d => d.mode === 'normal' && !d.endless && unlocked(d));
     const fd = focusDungeon();
     const dg = fd && Math.random() < MISSION_FOCUS_RATE ? fd : pick(dgs);
     const tier = dungeonTier(dg);
@@ -1246,12 +1256,13 @@ const Game = (() => {
       const types = dg.types ? typeBadges(dg.types) : '<span class="type" style="background:#777">모든 타입</span>';
       return `<div class="card dg ${dg.mode} ${ok ? '' : 'locked'}" style="--c1:${dg.pal[1]};--c2:${dg.pal[2]}">
         <div class="dg-head"><b>${esc(dg.n)}</b> ${dg.mode === 'rogue' ? '<i class="rogue">로그라이크</i>' : ''}${save.cleared[dg.id] ? '<i class="clear">클리어</i>' : ''}${mine[dg.id] ? `<i class="clear me" title="${esc(jo(spName(save.current), '으로'))} 클리어했다">✔ ${esc(spName(save.current))}</i>` : ''}</div>
-        <div class="dim">${dg.floors}층 · 적 Lv ${dg.lv[0]}~${dg.lv[1]}${save.best[dg.id] ? ` · 최고 ${save.best[dg.id]}F` : ''}</div>
+        <div class="dim">${dg.endless ? `♾ 끝없음 · 적 Lv${endlessLv(1)}부터 (${ENDLESS.maxFloor}층 Lv${MAX_LEVEL}, 그 뒤로 층마다 +${ENDLESS.afterStep}) · 레벨 한계 없음` : `${dg.floors}층 · 적 Lv ${dg.lv[0]}~${dg.lv[1]}`}${save.best[dg.id] ? ` · 최고 ${save.best[dg.id]}F` : ''}</div>
+        ${dg.endless ? `<div class="note theme">♾ Lv1로 혼자 입장 · 지닌 물건·가방 ${ENDLESS.carry}개 · ${ENDLESS.allyEvery}층마다 동료 합류 · 10층마다 전설 보스와 티켓 · 11층부터 특수 규칙</div>` : ''}
         <div>${types}</div>
         ${dg.wx && dg.wx.length ? `<div class="note">날씨: ${dg.wx.map(([w, p]) => `${WEATHERS[w].icon}${WEATHERS[w].n} ${Math.round(p * 100)}%`).join(' · ')}</div>` : ''}
         ${!dg.theme && bossPool(dg).length ? `<div class="note theme">👑 최종 보스 ${bossPool(dg).map(spName).join(' / ')}${bossPool(dg).length > 1 ? ' 중 하나' : ''}${midPool(dg).length ? ` · 중간 보스 ${dg.mid.floors.join(', ')}층` : ''}</div>` : ''}
         ${dg.theme ? `<div class="note theme">👑 ${esc(dg.theme)} — 최종 보스 ${bossPool(dg).map(spName).join(' / ') || '?'}${bossPool(dg).length > 1 ? ' 중 하나' : ''}${midPool(dg).length ? ` · 중간 보스 ${dg.mid.floors.join(', ')}층` : ''}</div>` : ''}
-        ${dg.pure ? `<div class="note theme">🌲 원작의 청정숲처럼: Lv${rogueLv(dg)}로 혼자, 가방도 지닌 물건도 없이 들어갑니다. 전설·환상은 들어갈 수 없음. 보스 없음, 받는 데미지 ${SOLO_DMG_MUL}배·PP 회복 도구와 구미가 잘 나옴 (그 밖의 보정 없음). 99층을 오르면 🎟 티켓 ${PURE_TICKETS}장과 💎청정의 결정(전용 도구 +4 강화). 나오면 원래대로 돌아갑니다.</div>` : dg.mode === 'rogue' ? `<div class="note">입장 시 Lv${ROGUE_LEVEL}, 가방 초기화 (지닌 물건은 그대로). 나오면 원래대로 돌아갑니다.</div>` : ''}
+        ${dg.pure ? `<div class="note theme">🌲 원작의 청정숲처럼: Lv${rogueLv(dg)}로 혼자, 가방도 지닌 물건도 없이 들어갑니다. 전설·환상은 들어갈 수 없음. 보스 없음, 받는 데미지 ${SOLO_DMG_MUL}배·PP 회복 도구와 구미가 잘 나옴 (그 밖의 보정 없음). 99층을 오르면 🎟 티켓 ${PURE_TICKETS}장과 💎청정의 결정(전용 도구 +4 강화). 나오면 원래대로 돌아갑니다.</div>` : dg.mode === 'rogue' && !dg.endless ? `<div class="note">입장 시 Lv${ROGUE_LEVEL}, 가방 초기화 (지닌 물건은 그대로). 나오면 원래대로 돌아갑니다.</div>` : ''}
         ${ms ? `<div class="note ms">📜 진행 중인 임무 ${ms}개</div>` : ''}
         <div class="dg-btns">${sosLocked(dg.id) ? (save.sos.revived   // 구조된 뒤에는 여기서 바로 이어서 탐험 (v0.98: 구조 대기 중으로 막혀 보여서 다시 못 들어간다는 제보)
             ? `<button class="btn" data-act="sos-resume">🆘 ${save.sos.floor}F부터 이어서 탐험</button>`
@@ -1321,7 +1332,8 @@ const Game = (() => {
     const seenIn = ids => ids.filter(k => Progress.isSeen(k)).length;
     // 보스
     const finals = bossPool(dg).length ? bossPool(dg) : BOSSES[dg.id] && DATA.species[BOSSES[dg.id]] ? [BOSSES[dg.id]] : [];
-    const bossHtml = `<h3>보스</h3>
+    const bossHtml = dg.endless ? `<h3>보스</h3><div class="row"><span class="grow"><b>${ENDLESS.bossEvery}층마다</b> 전설·환상 중 하나 (한 탐험에서 겹치지 않음) · 그 층 Lv+3</span></div>
+      <p class="dim">보스는 HP 3.5배, 공격·방어·특공·특방 1.1배. 쓰러뜨리면 티켓(층 ÷ ${ENDLESS.bossEvery}장)·구미를 주고, 계단에서 돌아갈 수 있다. ${ENDLESS.allyEvery}층마다 동료가 합류한다.</p>` : `<h3>보스</h3>
       <div class="row"><span class="grow"><b>${dg.floors}층 (최종)</b> ${finals.length ? finals.map(spName).join(' / ') + (finals.length > 1 ? ' 중 하나' : '') : '그 층 후보 중 가장 강한 포켓몬'} · Lv${Math.min(MAX_LEVEL, floorLv(dg.floors) + (BOSS_SOLO.has(dg.id) ? 0 : 3))}${BOSS_SOLO.has(dg.id) ? ' · 부하 없이 혼자' : ''}</span></div>
       ${finals.length ? mon(finals) : ''}
       ${midPool(dg).length ? `<div class="row"><span class="grow"><b>중간 보스 ${dg.mid.floors.join(', ')}층</b> 아래 중 하나씩 (한 탐험에서 겹치지 않음)</span></div>${mon(midPool(dg))}` : ''}
@@ -1347,9 +1359,10 @@ const Game = (() => {
       dg.hidden ? '숨은 던전 (메달 진행도에는 들어가지 않는다)' : '',
       dg.extra ? (dg.theme ? `${dg.theme} 시리즈가 일반 적으로도 섞여 나온다` : `${dg.extra.filter(id => DATA.species[id]).map(spName).join('·')}도 일반 적으로 섞여 나온다`) : '',
       `한 층에 머물 수 있는 시간: ${windOf(dg).limit}턴 (넘으면 바람에 날려감)`,
-      dg.pure ? `청정의 탑: Lv${rogueLv(dg)}, 가방·지닌 물건 없이 혼자 입장. 전설·환상은 들어갈 수 없음. 보스 없음` : dg.mode === 'rogue' ? `로그라이크: Lv${ROGUE_LEVEL}, 기본 가방으로 입장 (지닌 물건은 그대로)` : '',
-      dg.pure ? `적용되는 보정: 받는 데미지 ${SOLO_DMG_MUL}배 · 경험치 ${ROGUE_EXP_MUL}배 · 과사열매 ${ROGUE_DROP_MUL.leppa}배·맥스엘릭서 ${ROGUE_DROP_MUL.elixir}배·구미 ${ROGUE_RARE_MUL}배 잘 나옴 · 돈 무더기 대신 아이템 (혼자 탐험의 능력치 보정·영양제 보정은 없음). 기술머신과 메가스톤은 들어간 포켓몬(과 그 진화형)의 것만 나온다`
-        : dg.mode === 'rogue' ? `적용되는 보정: 경험치 ${ROGUE_EXP_MUL}배 · 과사열매 ${ROGUE_DROP_MUL.leppa}배·맥스엘릭서 ${ROGUE_DROP_MUL.elixir}배·영양제와 구미 ${ROGUE_RARE_MUL}배 잘 나옴(가져가서 마을에서 쓰는 용도. 마을에서 먹은 영양제·구미 효과는 적용되지 않고, 던전에서 먹은 구미는 이번 탐험 동안만) · 혼자 탐험 보정(받는 데미지 ${SOLO_DMG_MUL}배·HP를 뺀 능력치 ${SOLO_STAT_MUL}배) · 기술머신은 들어간 포켓몬이 배울 수 있는 것만` : '',
+      dg.pure ? `청정의 탑: Lv${rogueLv(dg)}, 가방·지닌 물건 없이 혼자 입장. 전설·환상 불가. 보스 없음` : dg.endless ? `끝없는 던전: Lv${rogueLv(dg)}, 지닌 물건과 가방 ${ENDLESS.carry}개로 혼자 입장. ${ENDLESS.allyEvery}층마다 동료 합류. 레벨 한계 없음` : dg.mode === 'rogue' ? `로그라이크: Lv${ROGUE_LEVEL}, 기본 가방으로 입장 (지닌 물건은 그대로)` : '',
+      dg.pure ? `적용되는 보정: 받는 데미지 ${SOLO_DMG_MUL}배 · 경험치 ${ROGUE_EXP_MUL}배 · 과사열매 ${ROGUE_DROP_MUL.leppa}배·맥스엘릭서 ${ROGUE_DROP_MUL.elixir}배·구미 ${ROGUE_RARE_MUL}배 · 돈 대신 아이템 · 기술머신·메가스톤은 들어간 포켓몬 것만`
+        : dg.endless ? `적용되는 보정: 과사열매 ${ROGUE_DROP_MUL.leppa}배·맥스엘릭서 ${ROGUE_DROP_MUL.elixir}배·구미 ${ENDLESS.gummyW}배 · 혼자일 때 혼자 탐험 보정 · 기술머신 없음`
+        : dg.mode === 'rogue' ? `적용되는 보정: 경험치 ${ROGUE_EXP_MUL}배 · 과사열매 ${ROGUE_DROP_MUL.leppa}배·맥스엘릭서 ${ROGUE_DROP_MUL.elixir}배·영양제와 구미 ${ROGUE_RARE_MUL}배 · 혼자 탐험 보정(받는 데미지 ${SOLO_DMG_MUL}배·능력치 ${SOLO_STAT_MUL}배) · 기술머신은 들어간 포켓몬이 배울 수 있는 것만` : '',
     ].filter(Boolean);
     // 아이템: 마지막 층 기준 드롭 확률 (앞쪽 층은 등급이 낮은 아이템만)
     const dropLvAt = f => dropLvFor(dg, f, hard ? normLv(f) + HARD_DROP_LV : normLv(f));   // 하드: 한 등급 위 (js/dungeon.js D.lvl)
@@ -1375,7 +1388,7 @@ const Game = (() => {
     const sigHere = sigItemsFor([...allIds, ...finals, ...midPool(dg)]);
     const megaHere = dg.lv[1] >= MEGA_MIN_LV ? megaPool(dg) : [];
     return `<div class="dg-info">
-        <p>${dg.floors}층 · ${dg.mode === 'rogue' ? '로그라이크' : '일반'} 던전${dg.theme ? ` · 👑 ${esc(dg.theme)}` : ''} · ${dg.types ? typeBadges(dg.types) : '<span class="type" style="background:#777">모든 타입</span>'}
+        <p>${dg.endless ? `♾ 끝없음 (${ENDLESS.maxFloor}층 적 Lv${MAX_LEVEL}, 그 뒤로 층마다 +${ENDLESS.afterStep}, 레벨 한계 없음)` : dg.floors + '층'} · ${dg.mode === 'rogue' ? '로그라이크' : dg.endless ? '끝없는' : '일반'} 던전${dg.theme ? ` · 👑 ${esc(dg.theme)}` : ''} · ${dg.types ? typeBadges(dg.types) : '<span class="type" style="background:#777">모든 타입</span>'}
           ${dg.req ? `<br><span class="dim">${esc(jo(dungeonById(dg.req).n, '을'))} 클리어하면 열림</span>` : ''}</p>
         <ul class="dg-feat">${feat.map(x => `<li>${x}</li>`).join('')}</ul>
         ${dg.noBoss ? "" : bossHtml}
@@ -1399,7 +1412,7 @@ const Game = (() => {
         <button class="btn sm ghost" data-act="drop-mission" data-arg="${m.id}">취소</button></div>`).join('') : '<p class="dim">받은 임무가 없습니다.</p>'}
       <h3>게시판 <span class="dim">(던전에서 돌아오면 새 의뢰가 붙습니다)</span></h3>
       <div class="row"><span class="grow">📍 자주 뜨는 지역 <span class="dim">(고른 던전의 의뢰가 새 의뢰의 30~50%쯤 나와요)</span></span>
-        <select data-mfocus="1"><option value="">고르지 않음</option>${DUNGEONS.filter(d => d.mode === 'normal' && unlocked(d)).sort((a, b) => a.lv[0] - b.lv[0]).map(d => `<option value="${d.id}" ${save.missionFocus === d.id ? 'selected' : ''}>${esc(d.n)}</option>`).join('')}</select></div>
+        <select data-mfocus="1"><option value="">고르지 않음</option>${DUNGEONS.filter(d => d.mode === 'normal' && !d.endless && unlocked(d)).sort((a, b) => a.lv[0] - b.lv[0]).map(d => `<option value="${d.id}" ${save.missionFocus === d.id ? 'selected' : ''}>${esc(d.n)}</option>`).join('')}</select></div>
       ${save.missions.board.slice().sort((a, b) => dgOrder(a.dungeon) - dgOrder(b.dungeon) || a.floor - b.floor).map(m => `<div class="row">${portraitImg(m.kind === 'outlaw' ? m.target : m.client, 'portrait sm')}<div class="grow">${missionText(m)}<div class="dim">보상 ${rewardText(m)}</div></div>
         <button class="btn sm" data-act="take-mission" data-arg="${m.id}" ${acc.length >= missionMax() ? 'disabled' : ''}>수락</button></div>`).join('') || '<p class="dim">의뢰가 없습니다.</p>'}`;
   }
@@ -1822,10 +1835,10 @@ const Game = (() => {
     return `${upgradeBox()}<h3>가방 (${bagSlots()}/${bagMax()})</h3>
       <p class="dim">일반 던전에서 쓰러지면 가방 아이템의 절반을 무작위로 잃습니다. 귀중한 아이템은 창고에 맡기세요.</p>
       ${save.bag.length > 1 ? '<button class="btn sm ghost" data-act="sort-bag">↕ 가방 정리 (종류별로 정렬)</button>' : ''}
-      ${save.bag.map((b, i) => `<div class="row">${itemLabel(b.id)}${b.n > 1 ? ' ×' + b.n : ''}<span class="grow dim">${esc(ITEMS[b.id].d)}</span>
-        ${b.id === 'candy' ? '<button class="btn sm" data-act="use-candy">사용</button>' : ''}
+      ${save.bag.map((b, i) => `<div class="row bag-row"><span class="bag-name">${itemLabel(b.id)}${b.n > 1 ? ' ×' + b.n : ''}</span><span class="bag-desc dim">${esc(ITEMS[b.id].d)}</span>
+        <span class="bag-btns">${b.id === 'candy' ? '<button class="btn sm" data-act="use-candy">사용</button>' : ''}
         <button class="btn sm ghost" data-act="deposit" data-arg="${i}">창고로</button>
-        <button class="btn sm ghost danger" data-act="discard" data-arg="${i}">버리기</button></div>`).join('') || '<p class="dim">가방이 비어 있습니다.</p>'}`;
+        <button class="btn sm ghost danger" data-act="discard" data-arg="${i}">버리기</button></span></div>`).join('') || '<p class="dim">가방이 비어 있습니다.</p>'}`;
   }
 
   function evoOptions(sp) {
@@ -2301,6 +2314,13 @@ const Game = (() => {
       case 'ex-trade': case 'ex-sig': {
         const c = act === 'ex-sig' ? (SIG_TRADE_ITEMS.includes(arg) ? sigTickets(arg) : 0) : (TICKET_TRADES.find(x => x[0] === arg) || [])[1];
         if (!c || !ITEMS[arg] || (save.tickets || 0) < c) return;
+        if (act === 'ex-sig') {   // 전용 도구는 티켓이 많이 들어서 한 번 더 묻는다 (v1.05)
+          const it = ITEMS[arg], have = (save.storage[arg] || 0) + save.bag.filter(b => b.id === arg).reduce((t, b) => t + b.n, 0) + Object.values(save.roster).filter(ch => ch.held === arg).length;
+          if (!await UI.confirm('🎟 전용 도구 교환', `<p class="center">${Gfx.iconHtml(arg)} <b>${esc(it.n)}</b>${sigLv(arg) ? ` <span class="sig-lv">+${sigLv(arg)}</span>` : ''}</p>
+            <p>티켓 <b>${c}장</b>으로 바꿀까요? <span class="dim">(남는 티켓 ${save.tickets - c}장)</span></p>
+            <p class="dim">${esc(it.d)}</p>${have ? `<p class="warn">이미 ${have}개 가지고 있어요 (창고·가방·지닌 물건).</p>` : ''}`, '바꾼다', '그만둔다')) return;
+          if ((save.tickets || 0) < c) return;
+        }
         save.tickets -= c; storeKeep(arg); Sound.play('achieve'); UI.toast(`${ITEMS[arg].icon} ${jo(ITEMS[arg].n, '과')} 바꿨어요! (창고로)`); break;
       }
       case 'ex-gacha': gachaPull(+arg); break;
@@ -2953,6 +2973,7 @@ const Game = (() => {
     if (sosLocked(id) && save.sos.revived) return save.sos.thx ? resumeSOS() : receiveAOKAgain();
     if (sosLocked(id)) { UI.alert('🆘 구조 대기 중', `<p>${esc(dg.n)}에서 구조를 기다리고 있어요. 구조를 받아 이어서 탐험하거나, 임무 탭에서 구조 요청을 포기하면 다시 들어갈 수 있어요.</p>`); return; }
     const ch = save.roster[save.current];
+    let carry = null;   // 끝없는 던전: 가방에서 가져갈 아이템
     if (dg.pure && pureBlocked(save.current)) { UI.alert(esc(dg.n), `<p>${esc(jo(monName(save.current), "은"))} 전설·환상 포켓몬이라 ${esc(dg.n)}에 들어갈 수 없어요.</p><p class="dim">리더를 다른 포켓몬으로 바꿔서 도전해 주세요.</p>`); return; }
     if (dg.pure) {
       const ok = await UI.confirm(esc(dg.n), `<p><b>원작의 청정숲 같은 99층 탑</b>입니다.</p><ul>
@@ -2962,6 +2983,9 @@ const Game = (() => {
         <li>던전에서 나오면 레벨과 가방이 원래대로 돌아옵니다.</li>
         <li>클리어하거나 탈출하면 주운 돈과 아이템(창고로)을 가져올 수 있습니다. 쓰러지면 아무것도 가져오지 못합니다.</li></ul>`, '들어간다', '그만둔다');
       if (!ok) return;
+    } else if (dg.endless) {
+      carry = await endlessCarryDialog(dg, ch);
+      if (!carry) return;
     } else if (dg.mode === 'rogue') {
       const ok = await UI.confirm(esc(dg.n), `<p><b>로그라이크 던전</b>입니다.</p><ul>
         <li>레벨이 <b>${jo(ROGUE_LEVEL, '으로')}</b>, 가방이 초기화된 상태로 들어갑니다. (오랭열매 2개, 사과 1개 지급)</li>
@@ -2981,7 +3005,33 @@ const Game = (() => {
       if (!ok) return;
     }
     if (dg.mode === 'normal') await Story.inDungeon(dg.id, 'depart');   // 이야기: 출발하기 직전의 대사 (아직 클리어하지 않은 던전)
-    startRun(dg);
+    startRun(dg, false, {}, carry);
+  }
+  // 끝없는 던전 입장 (v1.05): 규칙 안내 + 가방에서 가져갈 아이템 고르기 (모두 합쳐 ENDLESS.carry개까지). 고르면 그 목록, 그만두면 null
+  function endlessCarryDialog(dg, ch) {
+    const bag = save.bag.map(b => ({ id: b.id, n: b.n })).filter(b => ITEMS[b.id]);
+    const pick = bag.map(() => 0), total = () => pick.reduce((a, n) => a + n, 0);
+    const rows = () => bag.map((b, i) => `<div class="row"><span class="grow">${itemLabel(b.id)} <span class="dim">×${b.n}</span></span>
+      <button class="btn sm ghost" data-c="${i}" data-d="-1" ${pick[i] ? '' : 'disabled'}>−</button><b class="carry-n">${pick[i]}</b><button class="btn sm ghost" data-c="${i}" data-d="1" ${pick[i] < b.n && total() < ENDLESS.carry ? '' : 'disabled'}>＋</button></div>`).join('') || '<p class="dim">가방이 비어 있어요.</p>';
+    const pl = partyList();
+    return new Promise(res => UI.open({
+      title: '♾ ' + dg.n, wide: true,
+      html: `<p><b>끝이 없는 로그라이크 던전</b>입니다.</p><ul>
+        <li><b>Lv${rogueLv(dg)}</b>로 혼자 들어갑니다. 지닌 물건${ch.held ? ` (${ITEMS[ch.held].icon}${esc(ITEMS[ch.held].n)}${sigLv(ch.held) ? ' +' + sigLv(ch.held) : ''})` : ''}과 영양제·구미로 올린 능력치는 가져가요. 능력치는 레벨에 비례해서 붙어요 (Lv100에서 전부).</li>
+        <li>적은 1층 Lv${endlessLv(1)}부터 ${ENDLESS.maxFloor}층에 Lv${MAX_LEVEL}, 그 뒤로도 층마다 ${ENDLESS.afterStep}씩 끝없이 오릅니다. 이 던전에서는 <b>레벨 한계가 없어서</b> 탐험대도 Lv100을 넘어 자라요 (나오면 원래대로).</li>
+        <li>10층마다 전설 보스. 쓰러뜨리면 티켓(층 ÷ 10장)을 바로 받고, 계단에서 마을로 돌아갈 수 있어요.</li>
+        <li>${ENDLESS.allyEvery}층마다 보스를 쓰러뜨리면 동료가 한 명씩 리더와 같은 레벨로 합류해요 (최대 ${ENDLESS.allyMax}명${pl.length ? `: ${pl.slice(0, ENDLESS.allyMax).map(id => esc(monName(id))).join(' → ')}` : ', 지금은 동료 목록이 비어 있어요'}).</li>
+        <li>11층부터 10층마다 특수 규칙이 하나 붙어요. 구미가 자주 나오고, 던전에서 먹은 구미는 +${ENDLESS.gummyAmt}씩 능력치마다 +${ENDLESS.gummyCap}까지 <b>이번 탐험 동안만</b> 올라요.</li>
+        <li>돌아오면 주운 것을 모두 창고로 가져와요. 쓰러지면 이번에 주운 아이템·돈은 잃고, 들고 간 아이템 중 남은 것만 창고로 돌아와요.</li></ul>
+        <h4>가져갈 아이템 <span class="dim">(<b class="carry-t">${total()}</b>/${ENDLESS.carry}개)</span></h4><div class="carry-list">${rows()}</div>${save.best[dg.id] ? `<p class="dim">최고 기록 ${save.best[dg.id]}층</p>` : ''}`,
+      choices: [{ label: '들어간다', fn: () => res(bag.map((b, i) => ({ id: b.id, n: pick[i] })).filter(b => b.n > 0)) }, { label: '그만둔다', fn: () => res(null) }], cancel: () => res(null),
+      onOpen: box => box.addEventListener('click', e => {
+        const b = e.target.closest('[data-c]'); if (!b) return;
+        const i = +b.dataset.c, d = +b.dataset.d;
+        pick[i] = Math.max(0, Math.min(bag[i].n, pick[i] + d, pick[i] + (ENDLESS.carry - total())));
+        box.querySelector('.carry-list').innerHTML = rows(); box.querySelector('.carry-t').textContent = total();
+      }),
+    }));
   }
 
   // 메가 진화의 탑: 노릴 메가스톤 (나오는 메가스톤의 MEGA_FOCUS_RATE만큼이 이 스톤)
@@ -3138,7 +3188,7 @@ const Game = (() => {
       show(null);
     });
   }
-  async function startRun(dg, hard, abilPicks = {}) {
+  async function startRun(dg, hard, abilPicks = {}, carry = null) {
     const sp = save.current, ch = save.roster[sp];
     const rogueMoves = !hard && dg.mode === 'rogue' ? await pickRogueMoves(sp, rogueLv(dg)) : null;
     if (rogueMoves === false) return;
@@ -3159,6 +3209,11 @@ const Game = (() => {
       p.shiny = !!ch.shiny;
       p.held = dg.pure ? null : ch.held || null;   // 청정의 탑: 지닌 물건도 두고 간다   // 지닌 물건 하나는 들고 간다 (메가스톤·전용 도구·모습 바꾸는 도구). 캐릭터 기록에서는 빠지지 않는다
       bag = dg.pure ? [] : [{ id: 'oran', n: 1 }, { id: 'oran', n: 1 }, { id: 'apple', n: 1 }];   // 청정의 탑: 빈 가방
+      if (dg.endless) {   // 끝없는 던전: 고른 아이템만 가방에서 꺼내 간다
+        bag = (carry || []).map(b => ({ ...b }));
+        for (const b of bag) { let n = b.n; for (const x of save.bag) if (x.id === b.id && n > 0) { const t = Math.min(n, x.n); x.n -= t; n -= t; } }
+        save.bag = save.bag.filter(x => x.n > 0);
+      }
     } else {
       p = makeCreature(sp, ch.lv, { player: true, exp: ch.exp, moves: ch.moves.length ? ch.moves : undefined, ability: entryAbility(sp, ch), boost: ch.boost });
       p.held = ch.held || null;
@@ -3169,6 +3224,7 @@ const Game = (() => {
     p.selForm = ch.form || undefined;   // 캐릭터 탭에서 골라 둔 모습 (로토무 등)
     p.belly = 100;
     const run = { dungeon: dg.id, floor: 1, mode: dg.mode, p, bag, money: 0, done: [], party: dg.mode === 'normal' ? partyList().map(makePartner) : [], carried: dg.mode === 'rogue' && !dg.pure ? ch.held || null : null };
+    if (dg.endless) run.startBag = JSON.parse(JSON.stringify(bag));   // 끝없는 던전: 쓰러지면 들고 온 것만 남긴다
     show('dungeon-screen');
     Dungeon.enter(run);
   }
@@ -3216,14 +3272,17 @@ const Game = (() => {
     if (s.run) { const was = s.run.floor; fit(s.run); if (s.run.floor !== was) { s.run.bossDone = null; s.run.bossPick = null; } }
     (s.missions && s.missions.accepted || []).forEach(fit); (s.missions && s.missions.board || []).forEach(fit);
     fit(s.sos);
-    for (const [id, f] of Object.entries(s.best || {})) { const dg = dungeonById(id); if (dg && f > dg.floors) s.best[id] = dg.floors; }   // 최고 기록도 (예: 25층 던전에 '최고 28F'가 나오지 않게)
+    for (const [id, f] of Object.entries(s.best || {})) { const dg = dungeonById(id); if (dg && !dg.endless && f > dg.floors) s.best[id] = dg.floors; }   // 최고 기록도 (예: 25층 던전에 '최고 28F'가 나오지 않게)
   }
+  // 끝없는 던전: 지금 층의 특수 규칙 (던전 정보에 보여 준다)
+  const D2rule = r => { const k = r && r.eRules && r.floor > 10 ? r.eRules[Math.floor((r.floor - 1) / 10)] : null; return k ? ` · ${ENDLESS_RULES[k].icon} ${ENDLESS_RULES[k].n}: ${ENDLESS_RULES[k].d}` : ''; };
   function saveRunSnapshot(r) {
     const p = r.p;
     save.run = { dungeon: r.dungeon, floor: r.floor, bossDone: r.bossDone === r.floor ? r.floor : null, bossPick: r.bossPick && r.bossPick.floor === r.floor ? r.bossPick : null, mode: r.mode, bag: r.bag, money: r.money, done: r.done, daily: r.daily || null, turns: r.turns || 0, kills: r.kills || 0, carried: r.carried || null, stats: r.stats || null,
       ...(r.hard ? { hard: true, hardLv: r.hardLv, rsp: p.rsp, kit: r.kit } : {}),
       p: { sp: p.sp, lv: p.lv, exp: p.exp, hp: p.hp, belly: p.belly, status: p.status, statusT: p.statusT, moves: ownMoves(p).map(m => m.id), pp: ownMoves(p).map(m => m.pp), ability: p.baseAbility ?? p.ability, held: p.held || null, tms: p.tms || [], shiny: !!p.shiny, boost: p.boost || null, form: p.selForm || null } };
     save.run.shinySeed = r.shinySeed && r.shinySeed.floor === r.floor ? r.shinySeed : null;
+    if (r.startBag) Object.assign(save.run, { startBag: r.startBag, eb: r.eb || null, eRules: r.eRules || null, eBossUsed: r.eBossUsed || null });   // 끝없는 던전 (v1.05)
     save.run.tactic = r.tactic || null; save.run.tactics = r.tactics || null;   // 동료 작전 (모두·동료별, v1.02)   // 이로치 씨앗: 새로고침해도 같은 층은 같은 결과
     save.run.party = (r.party || []).map(a => ({ sp: a.sp, rsp: a.rsp, lv: a.lv, exp: a.exp, hp: a.hp, moves: ownMoves(a).map(m => m.id), pp: ownMoves(a).map(m => m.pp), ability: a.baseAbility ?? a.ability, fainted: !!a.fainted, status: a.status, statusT: a.statusT }));
     saveParty(r);
@@ -3256,13 +3315,14 @@ const Game = (() => {
       return a;
     });
     const run = { dungeon: s.dungeon, floor: s.floor, bossDone: s.bossDone || null, bossPick: s.bossPick || null, shinySeed: s.shinySeed || null, tactic: s.tactic || undefined, tactics: s.tactics || undefined, mode: s.mode, p, bag: s.bag, money: s.money, done: s.done, daily: s.daily || null, turns: s.turns || 0, kills: s.kills || 0, party, carried: s.carried || null, stats: s.stats || null };
+    if (s.startBag) Object.assign(run, { startBag: s.startBag, eb: s.eb || undefined, eRules: s.eRules || undefined, eBossUsed: s.eBossUsed || undefined });
     show('dungeon-screen');
     Dungeon.enter(run);
   }
   function abandonSavedRun() {
     const s = save.run;
     if (s.daily) Progress.setupDaily(s.daily);
-    const fake = { dungeon: s.dungeon, floor: s.floor, mode: s.mode, bag: s.bag, money: s.money, done: [], daily: s.daily || null, turns: s.turns || 0, kills: s.kills || 0, hard: !!s.hard,
+    const fake = { dungeon: s.dungeon, floor: s.floor, mode: s.mode, bag: s.bag, money: s.money, done: [], daily: s.daily || null, turns: s.turns || 0, kills: s.kills || 0, hard: !!s.hard, startBag: s.startBag || undefined,
       kit: s.kit || [], p: { sp: s.p.sp, rsp: s.rsp, lv: s.p.lv, exp: s.p.exp, ability: s.p.ability, held: s.p.held, moves: s.p.moves.map(id => ({ id })) } };
     finishRun(fake, 'faint');
   }
@@ -3273,7 +3333,7 @@ const Game = (() => {
     Dungeon.leave();
     UI.closeAll();
     // 일반 던전에서 쓰러졌을 때: 친구에게 구조를 요청할 수 있다 (요청은 한 번에 하나)
-    if (outcome === 'faint' && r.mode === 'normal' && !r.hard) {
+    if (outcome === 'faint' && r.mode === 'normal' && !r.hard && !dungeonById(r.dungeon).endless) {   // 끝없는 던전은 구조 요청 없음
       show('town-screen'); renderTown(); Sound.town();   // 구조 요청 창도 마을에서 띄운다 (던전 음악이 남지 않게)
       if (save.sos) {
         UI.alert('구조 요청 불가', '<p>이미 기다리고 있는 구조 요청이 있어서 새로 요청할 수 없습니다.</p>').then(() => finishRun(r, 'faint'));
@@ -3764,6 +3824,12 @@ const Game = (() => {
         if (r.money) lines.push(`주운 돈 ₽${r.money}`);
         if (outcome === 'clear') { const bonus = dg.floors * 60; save.money += bonus; lines.push(`완주 보너스 ₽${bonus}`); }
         if (outcome === 'clear' && dg.pure) { save.tickets = (save.tickets || 0) + PURE_TICKETS; lines.push(`🎟 티켓 ${PURE_TICKETS}장을 받았다!`); storeKeep('purecrystal'); lines.push(`${ITEMS.purecrystal.icon} <b>${ITEMS.purecrystal.n}</b>을 받았다! (창고로) 교환 탭의 🔨 강화에서 +3 전용 도구를 +4로 만들 수 있다.`); }   // 청정의 탑 99층 보상
+      } else if (dg.endless && r.startBag) {   // 끝없는 던전: 주운 것은 잃고, 들고 간 아이템 중 남은 것만 창고로 돌아온다
+        const left = {}; for (const b of r.bag) left[b.id] = (left[b.id] || 0) + b.n;
+        let back = 0;
+        for (const b of r.startBag) { const n = Math.min(b.n, left[b.id] || 0); if (n > 0) { storeDeposit(b.id, n); left[b.id] -= n; back += n; } }
+        save.money = Math.max(0, save.money - r.money);
+        lines.push(`쓰러져서 이번에 주운 아이템과 돈을 잃었다.${back ? ` 들고 간 아이템 ${back}개는 창고로 돌아왔다.` : ''} 받은 티켓은 그대로다.`);
       } else {
         save.money = Math.max(0, save.money - r.money);
         lines.push('쓰러져서 아무것도 가져오지 못했다...');
@@ -3773,7 +3839,7 @@ const Game = (() => {
         lines.push(`오늘의 도전 기록: <b>${rec.floor}F</b>${rec.clear ? ' 완주!' : ''} · ${rec.turns}턴 · ${rec.kills}마리 쓰러뜨림`);
         lines.push(`도전 보상 ₽${reward}`);
         lines.push('기록은 던전 탭에서 친구에게 공유할 수 있습니다.');
-      } else lines.push(`레벨과 가방이 원래대로 돌아왔다. (최고 기록 ${save.best[dg.id]}F)`);
+      } else lines.push(dg.endless ? `♾ 도달한 층: <b>${r.floor}층</b> (최고 ${save.best[dg.id]}층) · 레벨이 원래대로 돌아왔다.` : `레벨과 가방이 원래대로 돌아왔다. (최고 기록 ${save.best[dg.id]}F)`);
     }
     save.run = null;
     save.day++;
@@ -3857,7 +3923,7 @@ const Game = (() => {
     };
     if (t === 'info' && D && D.dg) {
       const dg = D.dg, w = D.weather;
-      const here = `<p><b>지금 ${run.floor}층</b> / ${dg.floors}층 · 날씨 ${w ? `${WEATHERS[w].icon} ${WEATHERS[w].n}` : '없음'} · 이 층에서 ${run.turnsOnFloor || 0} / ${windOf(dg).limit}턴</p>`;
+      const here = `<p><b>지금 ${run.floor}층</b> / ${dg.endless ? `♾ (최고 ${save.best[dg.id] || 0}층)${D2rule(run)}` : dg.floors + '층'} · 날씨 ${w ? `${WEATHERS[w].icon} ${WEATHERS[w].n}` : '없음'} · 이 층에서 ${run.turnsOnFloor || 0} / ${windOf(dg).limit}턴</p>`;
       UI.open({ title: esc(dg.n), wide: true, html: head + here + dungeonInfoHtml(dg, run.hard, { floor: run.floor, ids: D.pool || [] }), choices: close, onOpen });
       return;
     }
@@ -3921,7 +3987,7 @@ const Game = (() => {
   // 상점 기술머신 분류 (다음 진열부터)
   function setTmFocus(v) { save.tmFocus = v || null; persist(); UI.toast(v ? '다음 진열부터 그 분류의 기술머신만 나와요. (🔄 새로고침하거나 다음 날)' : '기술머신 분류를 고르지 않았어요.'); }
   function setMissionFocus(id) { save.missionFocus = id || null; persist(); UI.toast(id ? `${dungeonById(id).n}의 의뢰가 더 자주 붙어요. (다음 새 의뢰부터)` : '자주 뜨는 지역을 해제했어요.'); }
-  return { setJunkLeave, missionText, eventList, playEvent, persist, rescueNow, rescueDialog, poke: () => { lastInput = Date.now(); if (idle) wakeIdle(); }, missionAlert, logSale, setTmFocus, shinyOk, setMissionFocus, hasClears, medalSection, dexMedals, askUpdate, recruit, unlockShiny, showMissions, importSave, noteShiny, boot, endRun, saveRunSnapshot, dungeonMenu, setSetting, renderTown, get save() { return save; }, setTab(t) { tab = t; renderTown(); } };
+  return { endlessAlly, setJunkLeave, missionText, eventList, playEvent, persist, rescueNow, rescueDialog, poke: () => { lastInput = Date.now(); if (idle) wakeIdle(); }, missionAlert, logSale, setTmFocus, shinyOk, setMissionFocus, hasClears, medalSection, dexMedals, askUpdate, recruit, unlockShiny, showMissions, importSave, noteShiny, boot, endRun, saveRunSnapshot, dungeonMenu, setSetting, renderTown, get save() { return save; }, setTab(t) { tab = t; renderTown(); } };
 })();
 
 window.addEventListener('DOMContentLoaded', () => {

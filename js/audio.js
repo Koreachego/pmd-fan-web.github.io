@@ -388,7 +388,7 @@ const Sound = (() => {
   const town = () => { const k = typeof Game !== 'undefined' && Game.save && Game.save.settings && Game.save.settings.townBgm;
     bgm(k ? 'town:' + k : 'town', { mode: 'major', bpm: 96, root: 55, prog: [0, 3, 4, 0], wave: 'triangle', sparse: 0.6, files: k ? [k, ...((window.MUSIC_ALIAS || {})[k] ? [window.MUSIC_ALIAS[k]] : []), 'town'] : ['town'] }); };
   // 오늘의 도전: 날짜로 정해지는 던전 하나의 곡 (날짜 순서대로 돌며 파일이 있는 첫 곡)
-  const dailyFiles = seed => { const ids = DUNGEONS.filter(d => !d.daily).map(d => d.id), k = seed % ids.length; return [...ids.slice(k), ...ids.slice(0, k), 'dungeon']; };
+  const dailyFiles = seed => { const ids = DUNGEONS.filter(d => !d.daily && !d.endless).map(d => d.id), k = seed % ids.length; return [...ids.slice(k), ...ids.slice(0, k), 'dungeon']; };
   const dungeon = dg => bgm('dg:' + dg.id + (dg.daily ? dg.seed : ''), { mode: MOODS[dg.id] || 'major', files: dg.daily ? dailyFiles(dg.seed >>> 0) : [dg.id, ...((window.MUSIC_ALIAS || {})[dg.id] ? [window.MUSIC_ALIAS[dg.id]] : []), 'dungeon'] });
   // 특별한 순간의 곡 (수배범·도둑질·몬스터하우스·이야기): 파일이 있을 때만 틀고, 없으면 fallback (합성 배경음으로 바꾸지 않는다)
   async function special(key, fallback) {

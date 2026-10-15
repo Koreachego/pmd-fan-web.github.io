@@ -68,4 +68,5 @@ window.MUSIC_VOLUME = {
 window.MUSIC_ALIAS = {
   eternal: 'spiral',   // 무한의 회랑 → Temporal Spire
   mega: 'meteor',      // 메가 진화의 탑 (전용 곡을 넣으면 그 곡)
+  endless: 'mystery',  // 끝없는 던전 (v1.05)
 };

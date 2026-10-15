@@ -84,7 +84,7 @@ const Tiles = (() => {
     summit: 'darkicemountainpeak', trial: 'deepboulderquarry', twilight: 'darkwasteland', mystery: 'normalmaze', eternal: 'buriedrelicb51fb99f',
     burned: 'rescueteammaze', whirl: 'watermaze', seafloor: 'deeplimestonecavern', ruins: 'buriedrelicb1fb20f', shrine: 'murkycave', altar: 'joyoustower',
     coronet: 'spacialcliffs', spiral: 'buriedrelicb21fb50f', areazero: 'purityforest80f99f', skyplain: 'northwindfield20f30f', twofist: 'darknightrelic',
-    crown: 'icicleforest', ultra: 'temporaltowerinthefutureofdarkness', meteor: 'meteorcave', zerodeep: 'southerncavernb01fb23f', watercity: 'wishcaveb01fb13f', genelab: 'electricmaze',
+    crown: 'icicleforest', ultra: 'temporaltowerinthefutureofdarkness', meteor: 'meteorcave', zerodeep: 'southerncavernb01fb23f', endless: 'wishcaveb90fb99f', watercity: 'wishcaveb01fb13f', genelab: 'electricmaze',
     kalos: 'purityforest61f79f', hero: 'howlingforest01f06f', flower: 'westerncaveb1fb27f', crescent: 'darkicemountain', crystaldeep: 'lapiscave',
     factory: 'mtsteel06f08f', seatemple: 'limestonecavern', magma: 'magmacavernb18fb23f', mega: 'temporalspireinthefutureofdarkness',
   };
@@ -230,7 +230,7 @@ const Tiles = (() => {
   }
   function drawProcedural(g, D) {
     const [wall, wallEdge, floorA, floorB] = D.dg.pal;
-    const deco = DECO[D.dg.id] || 'pebble';
+    const deco = DECO[D.dg.look || D.dg.id] || 'pebble';
     const fl = (x, y) => x >= 0 && y >= 0 && x < D.w && y < D.h && D.tiles[y * D.w + x] !== 0;   // 벽이 아닌 칸 (웅덩이는 바닥 위에 따로 그린다)
     // 바닥
     for (let y = 0; y < D.h; y++) for (let x = 0; x < D.w; x++) {
@@ -302,7 +302,7 @@ const Tiles = (() => {
     const c = document.createElement('canvas');
     c.width = D.w * TILE; c.height = D.h * TILE;
     const g = c.getContext('2d');
-    const set = pick(D.dg.id, onReady);
+    const set = pick(D.dg.look || D.dg.id, onReady);   // 끝없는 던전: 그 층이 빌린 던전의 그림 (v1.05)
     if (set) drawDtef(g, set, D); else drawProcedural(g, D);
     return c;
   }

@@ -181,12 +181,12 @@ i.clear { font-style: normal; font-size: 11px; background: #3a9d4d; padding: 1px
 #log div.st-slp { color: #9fb4ff; } #log div.st-frz { color: #7fe3ff; } #log div.st-cnf { color: #8ff0b0; }
 #log div.crit.super { color: #ff5ce1; text-shadow: 0 0 4px #ffb02e; }
 #controls { width: 470px; display: flex; flex-direction: column; gap: 6px; }
-#moves { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+#moves { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
 .mv { font: inherit; font-size: 12px; color: #fff; cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px;
   background: linear-gradient(90deg, var(--tc) 0 6px, #1a2f63 6px); border: 1px solid #fff5; text-align: left; }
 .mv:hover { filter: brightness(1.2); }
 .mv .k { color: var(--accent); }
-.mv .n { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mv .n { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mv .p { color: var(--dim); }
 .mv.empty { opacity: .5; }
 #actions { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
@@ -587,7 +587,7 @@ body.touch.vpad #actions { display: none; }   /* 동료 버튼은 X(행동) 메�
   #bottom { height: auto; }
   /* 기술 2×2는 왼쪽, 그 옆에 공격·자동 등 버튼 */
   #controls { width: 100%; flex-direction: row; align-items: stretch; }
-  #moves { grid-template-columns: 1fr 1fr; flex: 0 0 46%; align-content: start; }
+  #moves { grid-template-columns: repeat(2, minmax(0, 1fr)); flex: 0 0 46%; align-content: start; }
   #actions { flex: 1; align-content: start; }
 }
 
@@ -920,3 +920,27 @@ body.phone-land #auto-ind, body.phone-land #wind-ind { left: 50%; transform: tra
 .mate-order { display: inline-flex; gap: 2px; white-space: nowrap; }
 .mate-order .btn.sm { padding: 2px 7px; min-width: 0; }
 .mate-order .btn[disabled] { opacity: .3; }
+/* 가방 목록 (v1.04 보강): 설명 길이와 상관없이 버튼이 늘 같은 자리에 (오른쪽 끝) */
+.row.bag-row { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto; column-gap: 8px; }
+.bag-row .bag-btns { display: flex; gap: 4px; justify-content: flex-end; }
+@media (max-width: 800px) {
+  /* 휴대폰: 이름과 버튼을 한 줄에, 설명은 그 아래 줄 전체 */
+  .row.bag-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: 2px; }
+  .bag-row .bag-name { grid-column: 1; grid-row: 1; }
+  .bag-row .bag-btns { grid-column: 2; grid-row: 1; }
+  .bag-row .bag-desc { grid-column: 1 / -1; grid-row: 2; font-size: 12px; }
+}
+/* 자동으로 쓰지 않을 기술 (v1.04 보강) */
+.st-mv { display: flex; align-items: center; gap: 6px; }
+.st-mv.off .grow { opacity: .45; }
+.st-mv .mv-auto { flex: none; padding: 2px 8px; }
+.mv.auto-off { opacity: .6; position: relative; }
+.mv.auto-off::after { content: '자동 OFF'; position: absolute; top: 2px; right: 4px; font-size: 9px; color: #ffb4b4; }
+/* 이름이 긴 기술(플레어드라이브 등)이 칸을 넓혀 휴대폰 화면 밖으로 밀어내지 않게 (v1.05): 이름은 말줄임 */
+#moves .mv { min-width: 0; }
+@media (max-width: 400px) {   /* 좁은 휴대폰: 글자를 조금 줄여 '플레어드라이브' 같은 긴 이름도 다 보이게 */
+  #moves .mv { gap: 3px; padding: 5px 5px; }
+  #dungeon-screen #moves .mv .n { font-size: 12px; letter-spacing: -0.4px; }
+  #moves .mv .p { font-size: 10px; }
+  #moves .mv .k { font-size: 11px; }
+}

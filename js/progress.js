@@ -34,8 +34,8 @@ const Progress = (() => {
   }
 
   // ── 업적 ──
-  const normalDgs = () => DUNGEONS.filter(d => d.mode === 'normal');
-  const rogueBest = () => Math.max(0, ...DUNGEONS.filter(d => d.mode === 'rogue' && !d.daily).map(d => S().best[d.id] || 0));
+  const normalDgs = () => DUNGEONS.filter(d => d.mode === 'normal' && !d.endless);
+  const rogueBest = () => Math.max(0, ...DUNGEONS.filter(d => d.mode === 'rogue' && !d.daily && !d.endless).map(d => S().best[d.id] || 0));
   const shinyN = () => Object.values(S().shinySeen || {}).reduce((a, b) => a + b, 0);
   const maxBoost = () => Math.max(0, ...Object.values(S().roster).flatMap(r => Object.values(r.boost || {})));
   // 수집 업적 (v0.102 보강): 스타팅(세대별·전체)·전설과 환상 영입, 청정의 탑

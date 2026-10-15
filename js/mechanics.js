@@ -6,7 +6,8 @@ const NORMAL_ATTACK = { n: '공격', t: 0, p: 40, a: 100, pp: 0, c: 2, r: 'f', f
 const WONDER_GUARD_BASIC = 0.3;
 const MAX_LEVEL = 100;
 
-const expFor = lv => lv > MAX_LEVEL ? Infinity : Math.pow(lv, 3);   // Lv100까지 오를 수 있다 (예전엔 Lv99→100 필요 경험치가 무한대였다)
+const ENDLESS_MAX_LEVEL = 999;   // 끝없는 던전에서만: 레벨 한계 없음 (v1.05, 표시용 최대)
+const expFor = lv => lv > ENDLESS_MAX_LEVEL ? Infinity : Math.pow(lv, 3);   // Lv100까지 오를 수 있다 (예전엔 Lv99→100 필요 경험치가 무한대였다)
 // 레벨업 속도: 얻는 경험치를 이 수로 나눈다 (= 필요 경험치 배수). 경험치 표 자체는 모두 같아서 기존 세이브가 흐트러지지 않는다
 //  전설·준전설·환상 2배, 울트라비스트·패러독스 1.6배 (종족값이 높아 레벨이 빨리 오르는 것 보정)
 //  그 밖에는 원작의 성장 그룹을 절반쯤만 반영: 느림 1.15 · 보통-느림 1.05 · 보통 1 · 빠름 0.9 · 불규칙 0.85 · 변동 1.2
@@ -91,13 +92,21 @@ function makeCreature(sp, lv, opts = {}) {
   return c;
 }
 
+// 영양제·구미로 올린 능력치. 끝없는 던전(c.scaleBoost)은 레벨에 비례해서 (Lv100에서 전부, Lv50이면 절반, v1.05)
+function boostedStats(c, st) {
+  if (!c.scaleBoost || !c.boost) return applyBoost(st, c.boost);
+  const full = applyBoost({ ...st }, c.boost), f = Math.min(1, c.lv / MAX_LEVEL);
+  for (const k of Object.keys(STAT_KO)) st[k] += Math.floor((full[k] - st[k]) * f);
+  return st;
+}
 function recalc(c) {
   const old = c.maxhp;
-  Object.assign(c, c.baseAll ? statsFromBase(c.baseAll, c.lv, c.iv) : applyBoost(calcStats(looksOf(c), c.lv, c.iv), c.boost));   // 모습이 바뀌면 그 모습의 능력치
+  Object.assign(c, c.baseAll ? statsFromBase(c.baseAll, c.lv, c.iv) : boostedStats(c, calcStats(looksOf(c), c.lv, c.iv)));   // 모습이 바뀌면 그 모습의 능력치
+  if (c.eBoost) for (const [k, v] of Object.entries(c.eBoost)) if (k in STAT_KO) c[k] += v;   // 끝없는 던전에서 먹은 구미 (그 탐험 동안만, v1.05)
   if (c.hpMul) c.maxhp = Math.floor(c.maxhp * c.hpMul);   // 보스·수배범의 HP 배율 (모습이 바뀌어도 유지)
   if (c.statMul) for (const k of ['atk', 'def', 'spa', 'spd']) c[k] = Math.floor(c[k] * c.statMul);
   if (c.tf) {   // 변신한 동안: HP는 원래 포켓몬 기준, 나머지 능력치는 TF_STAT_MUL배
-    c.maxhp = applyBoost(calcStats(c.sp, c.lv, c.iv), c.boost).maxhp;
+    c.maxhp = boostedStats(c, calcStats(c.sp, c.lv, c.iv)).maxhp + ((c.eBoost && c.eBoost.maxhp) || 0);
     for (const k of ['atk', 'def', 'spa', 'spd', 'spe']) c[k] = Math.floor(c[k] * TF_STAT_MUL);
   }
   c.hp = clamp(c.hp + (c.maxhp - old), 1, c.maxhp);
@@ -275,7 +284,7 @@ function calcHit(att, def, move) {
     if (Dd.foeAcc) acc *= Dd.foeAcc;
     acc *= (heldOf(att).accMul || 1) * (heldOf(def).foeAcc || 1);
     acc *= speedAccMul(att, def);
-    if (weatherNow() === 'fog') acc *= 0.9;
+    if (weatherNow() === 'fog') acc *= weatherRaw() === 'hfog' ? 0.8 : 0.9;   // 짙은 안개 (끝없는 던전 규칙)
     if (Math.random() * 100 >= acc) return { miss: true };
   }
   if (move.c === 1) return { hit: true, dmg: 0, eff: 1 };
