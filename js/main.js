@@ -1260,15 +1260,14 @@ const Game = (() => {
         ${dg.endless ? `<div class="note theme">♾ Lv1로 혼자 입장 · 지닌 물건·가방 ${ENDLESS.carry}개 · ${ENDLESS.allyEvery}층마다 동료 합류 · 10층마다 전설 보스와 티켓 · 11층부터 특수 규칙</div>` : ''}
         <div>${types}</div>
         ${dg.wx && dg.wx.length ? `<div class="note">날씨: ${dg.wx.map(([w, p]) => `${WEATHERS[w].icon}${WEATHERS[w].n} ${Math.round(p * 100)}%`).join(' · ')}</div>` : ''}
-        ${!dg.theme && bossPool(dg).length ? `<div class="note theme">👑 최종 보스 ${bossPool(dg).map(spName).join(' / ')}${bossPool(dg).length > 1 ? ' 중 하나' : ''}${midPool(dg).length ? ` · 중간 보스 ${dg.mid.floors.join(', ')}층` : ''}</div>` : ''}
-        ${dg.theme ? `<div class="note theme">👑 ${esc(dg.theme)} — 최종 보스 ${bossPool(dg).map(spName).join(' / ') || '?'}${bossPool(dg).length > 1 ? ' 중 하나' : ''}${midPool(dg).length ? ` · 중간 보스 ${dg.mid.floors.join(', ')}층` : ''}</div>` : ''}
-        ${dg.pure ? `<div class="note theme">🌲 원작의 청정숲처럼: Lv${rogueLv(dg)}로 혼자, 가방도 지닌 물건도 없이 들어갑니다. 전설·환상은 들어갈 수 없음. 보스 없음, 받는 데미지 ${SOLO_DMG_MUL}배·PP 회복 도구와 구미가 잘 나옴 (그 밖의 보정 없음). 99층을 오르면 🎟 티켓 ${PURE_TICKETS}장과 💎청정의 결정(전용 도구 +4 강화). 나오면 원래대로 돌아갑니다.</div>` : dg.mode === 'rogue' && !dg.endless ? `<div class="note">입장 시 Lv${ROGUE_LEVEL}, 가방 초기화 (지닌 물건은 그대로). 나오면 원래대로 돌아갑니다.</div>` : ''}
+        ${dg.hidden ? '<div class="note theme">✨ 숨은 던전</div>' : ''}
+        ${dg.pure ? `<div class="note theme">🌲 Lv${rogueLv(dg)}·빈손·혼자 · 전설·환상 불가 · 보스 없음 · 클리어 보상 🎟 ${PURE_TICKETS}장 + 💎${ITEMS.purecrystal.n}</div>` : dg.mode === 'rogue' && !dg.endless ? `<div class="note">입장 시 Lv${ROGUE_LEVEL}, 가방 초기화 (지닌 물건은 그대로). 나오면 원래대로 돌아갑니다.</div>` : ''}
         ${ms ? `<div class="note ms">📜 진행 중인 임무 ${ms}개</div>` : ''}
         <div class="dg-btns">${sosLocked(dg.id) ? (save.sos.revived   // 구조된 뒤에는 여기서 바로 이어서 탐험 (v0.98: 구조 대기 중으로 막혀 보여서 다시 못 들어간다는 제보)
             ? `<button class="btn" data-act="sos-resume">🆘 ${save.sos.floor}F부터 이어서 탐험</button>`
             : '<button class="btn" disabled title="구조를 받거나 포기하면 다시 들어갈 수 있어요">🆘 구조 대기 중</button>')
           : `<button class="btn" data-act="go" data-arg="${dg.id}" ${ok ? '' : 'disabled'}>${ok ? '출발' : `🔒 ${esc(dungeonById(dg.req).n)} 클리어 필요`}</button>`}
-          <button class="btn ghost" data-act="dg-info" data-arg="${dg.id}" title="나오는 적과 아이템">ℹ 정보</button></div></div>`;
+          <button class="btn ghost" data-act="dg-info" data-arg="${dg.id}" title="나오는 적과 아이템">ℹ 정보</button>${dg.endless ? ' <button class="btn ghost" data-act="endless-rank">🏆 랭킹</button>' : ''}</div></div>`;
     }).join('')}</div>`;
   }
 
@@ -1307,6 +1306,42 @@ const Game = (() => {
   }
 
   // ── 던전 정보: 나오는 적, 보스, 아이템, 특징 ──
+  // ── 끝없는 던전 랭킹 (v1.06) ──
+  // 내 최고 기록(save.endlessRec)이 서버에 올린 것(save.endlessPosted)보다 높으면 올린다. 로그인·닉네임이 없으면 다음에
+  async function postEndlessRank() {
+    const rec = save.endlessRec;
+    if (!rec || rec.floor <= (save.endlessPosted || 0) || !Online.loggedIn()) return false;
+    try { await Online.submitEndless(rec); save.endlessPosted = rec.floor; persist(); UI.toast(`🏆 끝없는 던전 ${rec.floor}층 기록을 랭킹에 올렸어요.`); return true; }
+    catch (e) { console.warn(e); return false; }
+  }
+  async function endlessRankDialog(force) {
+    if (!Online.loggedIn()) { UI.alert('🏆 끝없는 던전 랭킹', '<p>랭킹은 로그인하면 볼 수 있어요. 기록도 로그인한 상태에서 올라가요.</p>'); return; }
+    await postEndlessRank();
+    let list;
+    try { list = await Online.endlessRanks(force); }
+    catch (e) { UI.alert('🏆 끝없는 던전 랭킹', `<p>랭킹을 불러오지 못했어요.</p><p class="dim">${esc(Online.why(e))}</p>`); return; }
+    const me = Online.uid(), mine = list.findIndex(x => x.uid === me), rec = save.endlessRec;
+    let my = null;   // 10위 밖이면 상위 몇 %인지만 (개수 집계)
+    if (mine < 0 && rec && (save.endlessPosted || 0) >= rec.floor) { try { my = await Online.endlessMyRank(rec.floor); } catch (e) { console.warn(e); } }
+    const admin = await Online.isAdmin().catch(() => false);
+    // 눌러서 펼치는 요약 (레벨·쓰러뜨림·구미·10층마다 턴): 말이 안 되는 기록을 눈으로 알아볼 수 있게
+    const sum = x => `<div class="rank-sum dim">Lv${x.lv || '?'} · 쓰러뜨림 ${(x.kills || 0).toLocaleString()} · 구미 ${x.gum || 0}개 · 층당 ${x.floor ? Math.round((x.turns || 0) / x.floor) : 0}턴${(x.ft || []).length ? `<br>10층마다 턴: ${x.ft.map((t, k) => `${(k + 1) * 10}F ${t.toLocaleString()}`).join(' · ')}` : ''}${admin ? `<br><button class="btn sm ghost danger" data-rank-del="${esc(x.uid)}">🗑 이 기록 지우기 (운영자)</button>` : ''}</div>`;
+    const row = (x, i) => `<details class="rank-d"><summary class="row rank-row${x.uid === me ? ' me' : ''}"><b class="rank-n">${i + 1}</b>
+      <span class="grow"><b>${esc(Online.cleanName(x.name || ''))}</b><br>${[x.lead, ...(x.party || [])].filter(id => DATA.species[id]).map((id, k) => portraitImg(id, 'portrait xs', 'Normal', !k && x.sh)).join('')}</span>
+      <span class="rank-f"><b>${x.floor}층</b><br><span class="dim">${(x.turns || 0).toLocaleString()}턴</span></span></summary>${sum(x)}</details>`;
+    UI.open({
+      title: '🏆 끝없는 던전 랭킹', wide: true,
+      html: `${list.length ? list.map(row).join('') : '<p class="dim">아직 기록이 없어요.</p>'}
+        ${mine < 0 && rec ? `<p class="rank-me">내 기록: <b>${rec.floor}층</b> · ${(rec.turns || 0).toLocaleString()}턴${my ? ` · <b>상위 ${Math.max(1, Math.ceil(my.rank / my.total * 100))}%</b> <span class="dim">(${my.total.toLocaleString()}명 중 ${my.rank.toLocaleString()}위)</span>` : (save.endlessPosted || 0) < rec.floor ? ' <span class="dim">(아직 올리지 못함)</span>' : ''}</p>` : ''}`,
+      choices: [{ label: '🔄 새로고침', fn: () => endlessRankDialog(true) }, { label: '닫기', fn: () => {} }],
+      onOpen: (box, m) => box.addEventListener('click', async e => {
+        const b = e.target.closest('[data-rank-del]'); if (!b) return;
+        if (!await UI.confirm('기록 지우기', '<p>이 랭킹 기록을 지울까요? 되돌릴 수 없어요.</p>', '지운다', '그만둔다')) return;
+        try { await Online.deleteEndlessRank(b.dataset.rankDel); UI.toast('기록을 지웠어요.'); UI.close(m); endlessRankDialog(true); }
+        catch (err) { UI.alert('지우지 못했어요', `<p>${esc(Online.why(err))}</p>`); }
+      }),
+    });
+  }
   function showDungeonInfo(id, hard) {
     const dg = id === 'daily' ? Progress.setupDaily() : dungeonById(id);
     if (!dg) return;
@@ -1321,7 +1356,11 @@ const Game = (() => {
     // 출현 포켓몬: 층 구간마다 후보를 모은다
     const band = dg.floors <= 10 ? Math.ceil(dg.floors / 2) : 5;
     const bands = [];
-    for (let a = 1; a <= dg.floors; a += band) {
+    if (dg.endless) {   // 끝없는 던전 (v1.06): 층으로 나누지 않는다. 50층까지 모두 / 그 뒤로는 최종 진화만 (실제로는 층마다 빌린 던전의 타입에서 12종)
+      const base = dungeonById(dg.id), ids = f => Dungeon.floorCandidates(base, f).cand.map(o => o.id).sort((x, y) => x - y);
+      bands.push({ a: 1, b: ENDLESS.maxFloor, ids: ids(1) }, { a: ENDLESS.maxFloor + 1, b: '', ids: ids(ENDLESS.maxFloor + 1) });
+    }
+    else for (let a = 1; a <= dg.floors; a += band) {
       const b = Math.min(dg.floors, a + band - 1), set = new Set();
       for (let f = a; f <= b; f++) if (!isBossFloor(dg, f) || f !== dg.floors) { const fc = Dungeon.floorCandidates(dg, f); fc.concept.forEach(id => set.add(id)); fc.cand.forEach(o => set.add(o.id)); }
       bands.push({ a, b, ids: [...set].sort((x, y) => x - y) });
@@ -1333,7 +1372,7 @@ const Game = (() => {
     // 보스
     const finals = bossPool(dg).length ? bossPool(dg) : BOSSES[dg.id] && DATA.species[BOSSES[dg.id]] ? [BOSSES[dg.id]] : [];
     const bossHtml = dg.endless ? `<h3>보스</h3><div class="row"><span class="grow"><b>${ENDLESS.bossEvery}층마다</b> 전설·환상 중 하나 (한 탐험에서 겹치지 않음) · 그 층 Lv+3</span></div>
-      <p class="dim">보스는 HP 3.5배, 공격·방어·특공·특방 1.1배. 쓰러뜨리면 티켓(층 ÷ ${ENDLESS.bossEvery}장)·구미를 주고, 계단에서 돌아갈 수 있다. ${ENDLESS.allyEvery}층마다 동료가 합류한다.</p>` : `<h3>보스</h3>
+      <p class="dim">보스는 HP ${HARD_BOSS.hp}배, 공격·방어·특공·특방 ${HARD_BOSS.stat}배 (하드모드와 같음). 쓰러뜨리면 티켓(층 ÷ ${ENDLESS.bossEvery}장)·구미를 주고, 계단에서 돌아갈 수 있다. ${ENDLESS.allyEvery}층마다 동료가 합류한다.</p>` : `<h3>보스</h3>
       <div class="row"><span class="grow"><b>${dg.floors}층 (최종)</b> ${finals.length ? finals.map(spName).join(' / ') + (finals.length > 1 ? ' 중 하나' : '') : '그 층 후보 중 가장 강한 포켓몬'} · Lv${Math.min(MAX_LEVEL, floorLv(dg.floors) + (BOSS_SOLO.has(dg.id) ? 0 : 3))}${BOSS_SOLO.has(dg.id) ? ' · 부하 없이 혼자' : ''}</span></div>
       ${finals.length ? mon(finals) : ''}
       ${midPool(dg).length ? `<div class="row"><span class="grow"><b>중간 보스 ${dg.mid.floors.join(', ')}층</b> 아래 중 하나씩 (한 탐험에서 겹치지 않음)</span></div>${mon(midPool(dg))}` : ''}
@@ -1393,8 +1432,8 @@ const Game = (() => {
         <ul class="dg-feat">${feat.map(x => `<li>${x}</li>`).join('')}</ul>
         ${dg.noBoss ? "" : bossHtml}
         ${hereSet.size ? `<h3>🎯 지금 ${here.floor}층에 나오는 포켓몬 <span class="dim">${hereSet.size}종 · 아래 목록에서도 테두리로 표시</span></h3>${mon([...hereSet].sort((a, b) => a - b))}` : ''}
-        <h3>나오는 포켓몬 <span class="dim">${seenIn([...allIds])}/${allIds.size}종 만남 · 층마다 이 중 6종이 무작위로 등장${!dg.extra && [...PARADOX_PAST, ...PARADOX_FUTURE].some(id => allIds.has(id)) ? ' (패러독스 포켓몬은 드물게)' : ''} · 어두운 것은 아직 못 만난 포켓몬</span></h3>
-        ${bands.map((b, i) => `<details${i === 0 ? ' open' : ''}><summary><b>${b.a === b.b ? b.a : `${b.a}~${b.b}`}층</b> <span class="dim">${hard ? `Lv${dg.lv[1]}` : `Lv${floorLv(b.a)}~${floorLv(b.b)}`} · ${b.ids.length}종 (만남 ${seenIn(b.ids)})</span></summary>${mon(b.ids)}</details>`).join('')}
+        <h3>나오는 포켓몬 <span class="dim">${seenIn([...allIds])}/${allIds.size}종 만남 · 층마다 이 중 ${dg.endless ? `${ENDLESS.poolN}종 (그 층이 빌린 던전의 타입, ${ENDLESS.maxFloor}층부터는 최종 진화·울트라비스트)` : '6종'}이 무작위로 등장${!dg.extra && [...PARADOX_PAST, ...PARADOX_FUTURE].some(id => allIds.has(id)) ? ' (패러독스 포켓몬은 드물게)' : ''} · 어두운 것은 아직 못 만난 포켓몬</span></h3>
+        ${bands.map((b, i) => `<details${i === 0 ? ' open' : ''}><summary><b>${b.a === b.b ? b.a : `${b.a}~${b.b}`}층</b> <span class="dim">${hard ? `Lv${dg.lv[1]}` : dg.endless ? `Lv${endlessLv(b.a)}~${b.b ? endlessLv(b.b) : ''}${b.b ? '' : ' · 최종 진화·울트라비스트, 패러독스도 자주'}` : `Lv${floorLv(b.a)}~${floorLv(b.b)}`} · ${b.ids.length}종 (만남 ${seenIn(b.ids)})</span></summary>${mon(b.ids)}</details>`).join('')}
         <h3>나오는 아이템 <span class="dim">마지막 층 기준 확률 · ${dg.pure ? `한 층에 아이템 ${ITEMS_PER_FLOOR[0] + 2}~${ITEMS_PER_FLOOR[1] + 4}개, 돈 무더기 없음 (적이 떨어뜨리는 것도 아이템)` : `한 층에 아이템 ${ITEMS_PER_FLOOR[0]}~${ITEMS_PER_FLOOR[1]}개, 돈 2~4무더기`} · ${tierNote}</span></h3>
         ${itemHtml}
         ${table.money && !dg.pure ? `<p>💰 <b>돈 무더기</b> <span class="dim">${pctT(total * table.money)} · 아이템 자리에 대신 놓이는 돈</span></p>` : ''}
@@ -2040,7 +2079,7 @@ const Game = (() => {
     const counts = Object.entries(STAT_KO).map(([k, n]) => `<span class="gm-stat"><b>${n}</b> +${(b['g_' + k] || 0) * gummyAmt(k)} <span class="dim">(${b['g_' + k] || 0}/${GUMMY_MAX})</span></span>`).join('');
     const own = Object.keys(GUMMIES).filter(id => ownedCount(id));
     return `<div class="gm-counts">${counts}</div>
-      <div class="btns">${own.length ? own.map(id => `<button class="btn sm" data-act="gummy" data-arg="${id}:${sp}" title="${esc(ITEMS[id].d)}">${ITEMS[id].icon} ${esc(ITEMS[id].n)} ×${ownedCount(id)}</button>`).join(' ')
+      <div class="btns">${own.length ? own.map(id => { const full = !ITEMS[id].gummy.some(k => (b['g_' + k] || 0) < GUMMY_MAX); return `<button class="btn sm" data-act="gummy" data-arg="${id}:${sp}" title="${esc(ITEMS[id].d)}" ${full ? 'disabled' : ''}>${ITEMS[id].icon} ${esc(ITEMS[id].n)} ×${ownedCount(id)}${full ? ' (최대)' : ''}</button>`; }).join(' ')
         : '<span class="dim">가진 구미가 없습니다. 던전 깊은 곳에서 아주 드물게 발견됩니다.</span>'}</div>`;
   }
   function useGummy(id, sp = save.current) {
@@ -2390,6 +2429,7 @@ const Game = (() => {
       case 'restore-backup': return restoreBackup(+arg);
       case 'dgtab': dgTab = arg; break;
       case 'dg-info': return showDungeonInfo(arg);
+      case 'endless-rank': return endlessRankDialog();
       case 'dg-info-hard': return showDungeonInfo(arg, true);
       case 'ending': return showEnding(false);
       case 'ending-stats': return showEndingStats();
@@ -2976,12 +3016,12 @@ const Game = (() => {
     let carry = null;   // 끝없는 던전: 가방에서 가져갈 아이템
     if (dg.pure && pureBlocked(save.current)) { UI.alert(esc(dg.n), `<p>${esc(jo(monName(save.current), "은"))} 전설·환상 포켓몬이라 ${esc(dg.n)}에 들어갈 수 없어요.</p><p class="dim">리더를 다른 포켓몬으로 바꿔서 도전해 주세요.</p>`); return; }
     if (dg.pure) {
-      const ok = await UI.confirm(esc(dg.n), `<p><b>원작의 청정숲 같은 99층 탑</b>입니다.</p><ul>
-        <li>레벨 <b>${rogueLv(dg)}</b>로, <b>가방도 지닌 물건도 없이</b> 혼자 들어갑니다${ch.held ? ` (지닌 ${ITEMS[ch.held].icon}${esc(ITEMS[ch.held].n)}은 마을에 두고 갑니다)` : ''}.</li>
-        <li>보스는 없습니다. 99층 계단을 오르면 클리어이고, 🎟 티켓 <b>${PURE_TICKETS}장</b>과 ${ITEMS.purecrystal.icon}<b>${ITEMS.purecrystal.n}</b>(전용 도구를 +4로 강화)을 받습니다.</li>
-        <li>받는 데미지는 ${SOLO_DMG_MUL}배이고 과사열매 ${ROGUE_DROP_MUL.leppa}배·맥스엘릭서 ${ROGUE_DROP_MUL.elixir}배·구미 ${ROGUE_RARE_MUL}배로 잘 나오고, 경험치는 ${ROGUE_EXP_MUL}배입니다. 혼자 탐험의 능력치 보정(${SOLO_STAT_MUL}배)·영양제 보정은 없습니다.</li>
-        <li>던전에서 나오면 레벨과 가방이 원래대로 돌아옵니다.</li>
-        <li>클리어하거나 탈출하면 주운 돈과 아이템(창고로)을 가져올 수 있습니다. 쓰러지면 아무것도 가져오지 못합니다.</li></ul>`, '들어간다', '그만둔다');
+      const ok = await UI.confirm(esc(dg.n), `<ul>
+        <li>Lv${rogueLv(dg)}로 혼자, 가방·지닌 물건 없이 입장${ch.held ? ` (${ITEMS[ch.held].icon}${esc(ITEMS[ch.held].n)}은 마을에 둠)` : ''}</li>
+        <li>전설·환상 불가 · 보스 없음 · ${dg.floors}층</li>
+        <li>클리어 보상: 🎟 티켓 ${PURE_TICKETS}장 + ${ITEMS.purecrystal.icon}${ITEMS.purecrystal.n}</li>
+        <li>보정: 받는 데미지 ${SOLO_DMG_MUL}배 · 경험치 ${ROGUE_EXP_MUL}배 · 과사열매 ${ROGUE_DROP_MUL.leppa}배·맥스엘릭서 ${ROGUE_DROP_MUL.elixir}배·구미 ${ROGUE_RARE_MUL}배</li>
+        <li>나오면 레벨·가방은 원래대로. 클리어·탈출하면 주운 것은 창고로, 쓰러지면 모두 잃음</li></ul>`, '들어간다', '그만둔다');
       if (!ok) return;
     } else if (dg.endless) {
       carry = await endlessCarryDialog(dg, ch);
@@ -3282,7 +3322,7 @@ const Game = (() => {
       ...(r.hard ? { hard: true, hardLv: r.hardLv, rsp: p.rsp, kit: r.kit } : {}),
       p: { sp: p.sp, lv: p.lv, exp: p.exp, hp: p.hp, belly: p.belly, status: p.status, statusT: p.statusT, moves: ownMoves(p).map(m => m.id), pp: ownMoves(p).map(m => m.pp), ability: p.baseAbility ?? p.ability, held: p.held || null, tms: p.tms || [], shiny: !!p.shiny, boost: p.boost || null, form: p.selForm || null } };
     save.run.shinySeed = r.shinySeed && r.shinySeed.floor === r.floor ? r.shinySeed : null;
-    if (r.startBag) Object.assign(save.run, { startBag: r.startBag, eb: r.eb || null, eRules: r.eRules || null, eBossUsed: r.eBossUsed || null });   // 끝없는 던전 (v1.05)
+    if (r.startBag) Object.assign(save.run, { startBag: r.startBag, eb: r.eb || null, eRules: r.eRules || null, eBossUsed: r.eBossUsed || null, eTickets: r.eTickets || 0, eGum: r.eGum || 0, eFt: r.eFt || null });   // 끝없는 던전 (v1.05)
     save.run.tactic = r.tactic || null; save.run.tactics = r.tactics || null;   // 동료 작전 (모두·동료별, v1.02)   // 이로치 씨앗: 새로고침해도 같은 층은 같은 결과
     save.run.party = (r.party || []).map(a => ({ sp: a.sp, rsp: a.rsp, lv: a.lv, exp: a.exp, hp: a.hp, moves: ownMoves(a).map(m => m.id), pp: ownMoves(a).map(m => m.pp), ability: a.baseAbility ?? a.ability, fainted: !!a.fainted, status: a.status, statusT: a.statusT }));
     saveParty(r);
@@ -3315,14 +3355,14 @@ const Game = (() => {
       return a;
     });
     const run = { dungeon: s.dungeon, floor: s.floor, bossDone: s.bossDone || null, bossPick: s.bossPick || null, shinySeed: s.shinySeed || null, tactic: s.tactic || undefined, tactics: s.tactics || undefined, mode: s.mode, p, bag: s.bag, money: s.money, done: s.done, daily: s.daily || null, turns: s.turns || 0, kills: s.kills || 0, party, carried: s.carried || null, stats: s.stats || null };
-    if (s.startBag) Object.assign(run, { startBag: s.startBag, eb: s.eb || undefined, eRules: s.eRules || undefined, eBossUsed: s.eBossUsed || undefined });
+    if (s.startBag) Object.assign(run, { startBag: s.startBag, eb: s.eb || undefined, eRules: s.eRules || undefined, eBossUsed: s.eBossUsed || undefined, eTickets: s.eTickets || 0, eGum: s.eGum || 0, eFt: s.eFt || undefined });
     show('dungeon-screen');
     Dungeon.enter(run);
   }
   function abandonSavedRun() {
     const s = save.run;
     if (s.daily) Progress.setupDaily(s.daily);
-    const fake = { dungeon: s.dungeon, floor: s.floor, mode: s.mode, bag: s.bag, money: s.money, done: [], daily: s.daily || null, turns: s.turns || 0, kills: s.kills || 0, hard: !!s.hard, startBag: s.startBag || undefined,
+    const fake = { dungeon: s.dungeon, floor: s.floor, mode: s.mode, bag: s.bag, money: s.money, done: [], daily: s.daily || null, turns: s.turns || 0, kills: s.kills || 0, hard: !!s.hard, startBag: s.startBag || undefined, eTickets: s.eTickets || 0,
       kit: s.kit || [], p: { sp: s.p.sp, rsp: s.rsp, lv: s.p.lv, exp: s.p.exp, ability: s.p.ability, held: s.p.held, moves: s.p.moves.map(id => ({ id })) } };
     finishRun(fake, 'faint');
   }
@@ -3829,7 +3869,7 @@ const Game = (() => {
         let back = 0;
         for (const b of r.startBag) { const n = Math.min(b.n, left[b.id] || 0); if (n > 0) { storeDeposit(b.id, n); left[b.id] -= n; back += n; } }
         save.money = Math.max(0, save.money - r.money);
-        lines.push(`쓰러져서 이번에 주운 아이템과 돈을 잃었다.${back ? ` 들고 간 아이템 ${back}개는 창고로 돌아왔다.` : ''} 받은 티켓은 그대로다.`);
+        lines.push(`쓰러져서 이번에 주운 아이템과 돈을 잃었다.${back ? ` 들고 간 아이템 ${back}개는 창고로 돌아왔다.` : ''}`);
       } else {
         save.money = Math.max(0, save.money - r.money);
         lines.push('쓰러져서 아무것도 가져오지 못했다...');
@@ -3839,7 +3879,13 @@ const Game = (() => {
         lines.push(`오늘의 도전 기록: <b>${rec.floor}F</b>${rec.clear ? ' 완주!' : ''} · ${rec.turns}턴 · ${rec.kills}마리 쓰러뜨림`);
         lines.push(`도전 보상 ₽${reward}`);
         lines.push('기록은 던전 탭에서 친구에게 공유할 수 있습니다.');
-      } else lines.push(dg.endless ? `♾ 도달한 층: <b>${r.floor}층</b> (최고 ${save.best[dg.id]}층) · 레벨이 원래대로 돌아왔다.` : `레벨과 가방이 원래대로 돌아왔다. (최고 기록 ${save.best[dg.id]}F)`);
+      } else if (dg.endless) {   // 끝없는 던전: 도달한 층에 비례한 티켓 (쓰러져도) + 보스 티켓 합계
+        const t = endlessEndTickets(r.floor); save.tickets = (save.tickets || 0) + t;
+        lines.push(`♾ 도달한 층: <b>${r.floor}층</b> (최고 ${save.best[dg.id]}층)`);
+        lines.push(`🎟 티켓: 도달 보상 ${t}장${r.eTickets ? ` + 보스 ${r.eTickets}장 = <b>${t + r.eTickets}장</b>` : ''}`);
+        if (r.floor > ((save.endlessRec && save.endlessRec.floor) || 0)) save.endlessRec = { floor: r.floor, turns: r.turns || 0, lead: p.rsp || p.sp, party: (r.party || []).map(a => a.rsp || a.sp).slice(0, 3), sh: !!p.shiny, lv: p.lv, kills: r.kills || 0, gum: r.eGum || 0, ft: (r.eFt || []).slice(0, 100) };   // 랭킹에 올릴 내 최고 기록
+        setTimeout(postEndlessRank, 0);
+      } else lines.push(dg.endless ? '' : `레벨과 가방이 원래대로 돌아왔다. (최고 기록 ${save.best[dg.id]}F)`);
     }
     save.run = null;
     save.day++;

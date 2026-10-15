@@ -223,6 +223,7 @@ const Online = (() => {
       await db.collection('presence').doc(uid).delete().catch(() => {});
       await db.collection('diag').doc(uid).delete().catch(() => {});
       await db.collection('endingVotes').doc(uid).delete().catch(() => {});
+      await db.collection('endlessRank').doc(uid).delete().catch(() => {});
       await db.collection('users').doc(uid).delete();
       await user.delete();
     } catch (e) { throw { msg: why(e) }; }
@@ -374,6 +375,16 @@ const Online = (() => {
     await db.collection('presence').doc(user.uid).set({ at: firebase.firestore.FieldValue.serverTimestamp() });
   }
   // compat SDK에는 count가 없어서 REST 집계 요청을 쓴다 (문서 1000개까지 읽기 1번으로 계산됨)
+  async function countDocs(coll, where) {
+    const url = `https://firestore.googleapis.com/v1/projects/${ONLINE_CONFIG.projectId}/databases/(default)/documents:runAggregationQuery`;
+    const body = { structuredAggregationQuery: { structuredQuery: { from: [{ collectionId: coll }], ...(where ? { where } : {}) }, aggregations: [{ alias: 'n', count: {} }] } };
+    const headers = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + await user.getIdToken() };
+    if (appCheckOn()) headers['X-Firebase-AppCheck'] = (await firebase.appCheck().getToken()).token;
+    const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+    if (!r.ok) throw { code: r.status === 403 ? 'permission-denied' : r.status === 429 ? 'resource-exhausted' : 'http-' + r.status, message: 'count ' + r.status };
+    const j = await r.json();
+    return +((j[0] && j[0].result && j[0].result.aggregateFields.n.integerValue) || 0);
+  }
   async function onlineCount() {
     if (!user) return null;
     const since = new Date(Date.now() - ONLINE_WINDOW * 60 * 1000).toISOString();
@@ -431,6 +442,44 @@ const Online = (() => {
 
   // 순위는 하루에 한 번만 읽는다 (브라우저에 저장해 두고 날짜가 바뀌면 다시 읽음)
   const RANK_KEY = 'pmdweb_starters';
+  // ── 끝없는 던전 랭킹 (v1.06): endlessRank/{uid} = { name?, floor, turns, lead, party, sh, at, ver }. 최고 층이 오를 때만 쓴다 (규칙에서도 막는다)
+  //  보기: 상위 RANK_TOP명만 자세히 읽고, 나머지는 개수 집계로 내 순위(상위 몇 %)만. RANK_CACHE_MS 동안은 다시 읽지 않는다 (읽기 절약)
+  const RANK_TOP = 10, RANK_CACHE_MS = 5 * 60 * 1000;
+  let rankCache = null;
+  async function submitEndless(rec) {
+    if (!await init()) throw new Error('offline');
+    if (!user) throw { code: 'need-login' };
+    const nm = profile && profile.nameOk && profile.name ? { name: profile.name } : {};   // 닉네임이 없으면 이름 없이 (화면에는 익명)
+    await db.collection('endlessRank').doc(user.uid).set({ ...nm, floor: rec.floor, turns: rec.turns || 0, lead: rec.lead, party: rec.party, sh: !!rec.sh,
+      lv: rec.lv || 1, kills: rec.kills || 0, gum: rec.gum || 0, ft: (rec.ft || []).slice(0, 100),
+      at: firebase.firestore.FieldValue.serverTimestamp(), ver: GAME_VERSION });
+    rankCache = null;
+  }
+  // 내 순위: 나보다 높은 층의 기록 수 + 1 / 전체 기록 수 (REST 집계, 문서 1000개까지 읽기 1번)
+  async function endlessMyRank(floor) {
+    const [above, total] = await Promise.all([countDocs('endlessRank', { fieldFilter: { field: { fieldPath: 'floor' }, op: 'GREATER_THAN', value: { integerValue: String(floor) } } }), countDocs('endlessRank')]);
+    return { rank: above + 1, total: Math.max(total, above + 1) };
+  }
+  // 운영자: admins/{uid} 문서가 있는 계정 (Firebase 콘솔에서 직접 만든다). 랭킹 기록을 지울 수 있다
+  let adminOf = null;
+  async function isAdmin() {
+    if (!user) return false;
+    if (adminOf && adminOf.uid === user.uid) return adminOf.v;
+    const d = await db.collection('admins').doc(user.uid).get().catch(() => null);
+    adminOf = { uid: user.uid, v: !!(d && d.exists) };
+    return adminOf.v;
+  }
+  async function deleteEndlessRank(uid) { await db.collection('endlessRank').doc(uid).delete(); rankCache = null; }
+  async function endlessRanks(force) {
+    if (rankCache && rankCache.uid === (user && user.uid) && Date.now() - rankCache.at < (force ? FORCE_GAP_MS : RANK_CACHE_MS)) return rankCache.list;
+    if (!await init()) throw new Error('offline');
+    if (!user) throw { code: 'need-login' };
+    const r = await db.collection('endlessRank').orderBy('floor', 'desc').limit(RANK_TOP).get();
+    const list = r.docs.map(d => ({ uid: d.id, ...d.data(), at: d.data().at && d.data().at.toMillis ? d.data().at.toMillis() : 0 }));
+    list.sort((a, b) => b.floor - a.floor || (a.turns || 0) - (b.turns || 0));   // 같은 층이면 턴이 적은 쪽이 위
+    rankCache = { uid: user.uid, at: Date.now(), list };
+    return list;
+  }
   async function starterRanks() {
     const day = new Date().toLocaleDateString('sv');
     let cached = null;
@@ -448,6 +497,7 @@ const Online = (() => {
     touchPresence: track('touchPresence', touchPresence), onlineCount: track('onlineCount', onlineCount), PRESENCE_MIN, ONLINE_WINDOW,
     voteStarter: track('voteStarter', voteStarter), starterRanks: track('starterRanks', starterRanks), flushDiag,
     voteEnding: track('voteEnding', voteEnding), endingStats: track('endingStats', endingStats),
+    submitEndless: track('submitEndless', submitEndless), endlessRanks: track('endlessRanks', endlessRanks), endlessMyRank: track('endlessMyRank', endlessMyRank), RANK_TOP, isAdmin, deleteEndlessRank: track('deleteEndlessRank', deleteEndlessRank),
     enabled, init, onChange, loggedIn, name, userId, why, nameTaken: () => !!(profile && profile.nameTaken),
     serverDown, signUp, signIn, signOut, setName: track('setName', setName), deleteAccount, cleanName, uid: () => user && user.uid,
     fetchCloud: track('fetchCloud', fetchCloud), pushCloud: track('pushCloud', pushCloud), clearCloud: track('clearCloud', clearCloud),
