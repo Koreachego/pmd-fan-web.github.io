@@ -57,7 +57,7 @@ PC 키는 정보 탭에서 바꿀 수 있고, 휴대폰 조이스틱·ABXY는 �
 
 ## 개인정보
 - 로그인하지 않으면 모든 기록은 브라우저에만 저장되고, 서버로 보내지 않습니다.
-- 로그인하면 아이디, 닉네임, 세이브, 마지막 접속 시각과 구조 게시판에 올린 요청만 Google Firebase에 저장합니다.
+- 로그인하면 아이디, 닉네임, 세이브, 마지막 접속 시각, 구조 게시판에 올린 요청, 끝없는 던전 랭킹 기록(닉네임·층·턴·파티)만 Google Firebase에 저장합니다.
 - 광고·방문 기록 분석은 하지 않습니다.
 
 ## 크레딧과 라이선스
@@ -93,6 +93,14 @@ This is a non-commercial fan game. Content will be removed promptly upon request
 - 보안 규칙은 `firestore.rules`. 바꾸면 콘솔의 Firestore → 규칙에 붙여 넣고 게시하세요 (두 프로젝트 모두). 새 코드와 규칙이 함께 바뀌면 규칙을 먼저 올립니다.
 - 서버 사용량 절약: 클라우드 저장은 던전을 마칠 때·창을 닫을 때·마을에서 10분마다, 규칙으로 20초에 한 번까지. 접속 표시는 10분마다.
 - App Check는 `js/config.js`의 `APPCHECK_SITE_KEY`에 reCAPTCHA v3 사이트 키를 넣으면 켜집니다 (지금은 꺼져 있음).
+
+### 포크해서 배포하려면 (중요)
+`js/config.js`의 Firebase 설정은 **이 게임 서비스 전용**입니다. 고친 버전을 자기 사이트에 올릴 때는 반드시 **자기 Firebase 프로젝트를 만들어 `FIREBASE_CONFIG`를 바꿔 주세요.** 그대로 두면 이 게임의 서버·무료 사용량을 함께 쓰게 됩니다.
+1. [Firebase 콘솔](https://console.firebase.google.com/)에서 새 프로젝트를 만들고, 웹 앱을 추가해 나온 설정값을 `FIREBASE_CONFIG.prod`(와 `dev`)에 넣습니다.
+2. Authentication에서 이메일/비밀번호 로그인을 켜고, Firestore를 만든 뒤 `firestore.rules`를 게시합니다.
+3. 온라인 기능이 필요 없으면 `FIREBASE_CONFIG.prod`를 `null`로 두면 됩니다 (로그인·구조 게시판·랭킹만 꺼지고 게임은 그대로 됩니다).
+
+서비스용 API 키는 이 사이트 주소에서만 쓸 수 있게 제한되어 있습니다.
 
 ### 데이터
 - `tools_build_data.py`: PokeAPI CSV, SpriteCollab `tracker.json`, `credit_names.txt`로 `js/data.js`를 만듭니다.
