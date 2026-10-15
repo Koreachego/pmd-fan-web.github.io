@@ -172,10 +172,11 @@ const Progress = (() => {
       <div class="daily-body">${portraitImg(hero, 'portrait sm')}<div class="grow">
         <div>오늘의 주인공 <b>${esc(spName(hero))}</b> Lv${ROGUE_LEVEL}</div>
         <div class="dim">${DAILY_FLOORS}층 · ${typeBadges(dg.types)}${dg.wx.length ? ` · ${WEATHERS[dg.wx[0][0]].icon}${WEATHERS[dg.wx[0][0]].n}` : ''}</div></div></div>
-      <div class="note">같은 날에는 모두 같은 포켓몬과 같은 맵으로 도전합니다. 하루 한 번! 보상은 도달한 층마다 ₽${DAILY_REWARD.floor}, 완주하면 ₽${DAILY_REWARD.clear} 추가. 기록을 친구와 비교해 보세요.</div>
+      <div class="note">같은 날에는 모두 같은 포켓몬과 같은 맵으로 도전합니다. 기록은 하루 한 번, 그 뒤로는 연습할 수 있어요. 보상은 도달한 층마다 ₽${DAILY_REWARD.floor}, 완주하면 ₽${DAILY_REWARD.clear} 추가. 기록을 친구와 비교해 보세요.</div>
       ${rec ? `<div class="note ms">오늘의 기록: <b>${rec.floor}F</b>${rec.clear ? ' 완주!' : ''} · ${rec.turns}턴</div>` : ''}
       ${best ? `<div class="dim tiny">지금까지 최고 ${best}F</div>` : ''}
-      <div class="btns">${rec ? `<button class="btn" data-act="daily-share">📋 기록 공유</button> <button class="btn ghost" disabled>내일 다시 도전</button>`
+      ${rec && S().dailyPractice && S().dailyPractice.date === dg.date ? `<div class="dim tiny">오늘 연습 최고 ${S().dailyPractice.floor}F · ${S().dailyPractice.turns}턴</div>` : ''}
+      <div class="btns">${rec ? `<button class="btn" data-act="daily-share">📋 기록 공유</button> <button class="btn ghost" data-act="daily-practice">🔁 연습하기</button>`
         : `<button class="btn" data-act="daily-go">도전한다</button>`} <button class="btn ghost" data-act="dg-info" data-arg="daily">ℹ 정보</button></div></div>`;
   }
   function shareText(rec) {

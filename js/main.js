@@ -1130,6 +1130,7 @@ const Game = (() => {
     return `<div class="host" data-act="host-next" title="누르면 다른 말">${portraitImg(h[0], 'portrait sm', 'Happy')}<div class="host-bubble"><b>${esc(h[1])}</b><span>${esc(line)}</span></div></div>`;
   }
   let renderedTab = null;
+  let scrollAnchor = null;   // 다시 그린 뒤 이 요소가 화면의 같은 높이에 오도록 스크롤을 맞춘다 { sel, top }
   function renderTown() {
     // 같은 탭을 다시 그릴 때(팔기·꺼내기 등)는 스크롤 위치를 지킨다 (휴대폰 창고 목록이 맨 위로 올라가던 문제)
     const sameTab = renderedTab === tab, keepY = window.scrollY, keepLists = [...document.querySelectorAll('#tab-content .store-list')].map(e => e.scrollTop);
@@ -1168,6 +1169,16 @@ const Game = (() => {
     el.innerHTML = hostBar(tab) + ({ dungeon: tabDungeon, mission: tabMission, shop: tabShop, exchange: tabExchange, storage: tabStorage, bag: tabBag, char: tabChar, mons: tabMons, dex: Dex.render, ach: Progress.renderAch, info: tabInfo })[tab]();
     if (tab === 'dex') Dex.wire(el);
     if (sameTab) { el.querySelectorAll('.store-list').forEach((e, i) => { if (keepLists[i]) e.scrollTop = keepLists[i]; }); if (Math.abs(window.scrollY - keepY) > 1) window.scrollTo(0, keepY); }
+    if (!sameTab) el.style.paddingBottom = '';
+    if (scrollAnchor) {   // 맨 아래 근처라 더 내려갈 자리가 없으면 아래쪽에 잠깐 여백을 둔다 (탭을 바꾸면 없어진다)
+      const a = el.querySelector(scrollAnchor.sel);
+      if (a) {
+        const need = a.getBoundingClientRect().top - scrollAnchor.top, room = document.scrollingElement.scrollHeight - innerHeight - window.scrollY;
+        if (need > room) el.style.paddingBottom = `${(parseFloat(el.style.paddingBottom) || 0) + need - room}px`;
+        window.scrollBy(0, need);
+      }
+      scrollAnchor = null;
+    }
     renderedTab = tab;
     if (tab === 'mission') checkOnline();
     el.onclick = e => { const b = e.target.closest('[data-act]'); if (b && !b.disabled) onAction(b.dataset.act, b.dataset.arg); };
@@ -1449,7 +1460,7 @@ const Game = (() => {
       <h3>진행 중인 임무 (${acc.length}/${missionMax()}) <select class="mission-sort" title="임무 정렬"><option value="">받은 순서</option><option value="floor" ${save.missionSort === 'floor' ? 'selected' : ''}>던전·층수 순서</option></select></h3>
       ${acc.length ? sortMissions(acc).map(m => `<div class="row">${portraitImg(m.kind === 'outlaw' ? m.target : m.client, 'portrait sm', m.kind === 'sos' ? 'Pain' : 'Normal', !!m.shiny)}<div class="grow">${missionText(m)}<div class="dim">보상 ${rewardText(m)}</div></div>
         <button class="btn sm ghost" data-act="drop-mission" data-arg="${m.id}">취소</button></div>`).join('') : '<p class="dim">받은 임무가 없습니다.</p>'}
-      <h3>게시판 <span class="dim">(던전에서 돌아오면 새 의뢰가 붙습니다)</span></h3>
+      <h3 class="ms-board-h">게시판 <span class="dim">(던전에서 돌아오면 새 의뢰가 붙습니다)</span></h3>
       <div class="row"><span class="grow">📍 자주 뜨는 지역 <span class="dim">(고른 던전의 의뢰가 새 의뢰의 30~50%쯤 나와요)</span></span>
         <select data-mfocus="1"><option value="">고르지 않음</option>${DUNGEONS.filter(d => d.mode === 'normal' && !d.endless && unlocked(d)).sort((a, b) => a.lv[0] - b.lv[0]).map(d => `<option value="${d.id}" ${save.missionFocus === d.id ? 'selected' : ''}>${esc(d.n)}</option>`).join('')}</select></div>
       ${save.missions.board.slice().sort((a, b) => dgOrder(a.dungeon) - dgOrder(b.dungeon) || a.floor - b.floor).map(m => `<div class="row">${portraitImg(m.kind === 'outlaw' ? m.target : m.client, 'portrait sm')}<div class="grow">${missionText(m)}<div class="dim">보상 ${rewardText(m)}</div></div>
@@ -2265,6 +2276,8 @@ const Game = (() => {
       case 'go': return prepareRun(arg);
       case 'go-hard': return prepareHard(arg);
       case 'take-mission': {
+        // 수락하면 위의 '진행 중인 임무'에 한 줄이 늘어 게시판이 아래로 밀린다: 게시판이 화면에서 제자리에 있도록 맞춘다 (v1.07)
+        const h = document.querySelector('.ms-board-h'); if (h) scrollAnchor = { sel: '.ms-board-h', top: h.getBoundingClientRect().top };
         const i = save.missions.board.findIndex(m => m.id === arg);
         if (i >= 0 && save.missions.accepted.length < missionMax()) save.missions.accepted.push(save.missions.board.splice(i, 1)[0]);
         break;
@@ -2440,6 +2453,7 @@ const Game = (() => {
       case 'boost-toggle': { const ch = save.roster[arg && save.roster[+arg] ? +arg : save.current]; ch.boost = { ...(ch.boost || {}) }; if (ch.boost.off) delete ch.boost.off; else ch.boost.off = true; UI.toast(ch.boost.off ? '영양제·구미 효과를 껐습니다.' : '영양제·구미 효과를 켰습니다.'); break; }
       case 'devolve': return devolve();
       case 'daily-go': return prepareDaily();
+      case 'daily-practice': return prepareDaily(true);
       case 'daily-share': { const rec = Progress.dailyRecord(); if (rec) codeBox('🗓 오늘의 도전 기록', '<p>친구에게 보내서 기록을 비교해 보세요.</p>', esc(Progress.shareText(rec).replace(/\n/g, ' · ')), '확인'); return; }
       case 'sos-show': if (save.sos && save.sos.online && !save.sos.revived && !Online.serverDown()) {
         const s = save.sos, ok = await Promise.race([Online.probeSOS(s.docId || s.id).then(() => true, () => false), new Promise(res => setTimeout(() => res(false), SOS_POST_WAIT))]);
@@ -3286,21 +3300,22 @@ const Game = (() => {
     return lines;
   }
   // 오늘의 도전: 그날 정해진 포켓몬으로, 하루 한 번
-  async function prepareDaily() {
-    if (Progress.dailyRecord()) return;
+  async function prepareDaily(practice) {
+    if (!practice && Progress.dailyRecord()) return;
+    if (practice && !Progress.dailyRecord()) return;   // 연습은 공식 도전을 한 뒤에
     const dg = Progress.setupDaily();
-    const ok = await UI.confirm(esc(dg.n), `<div class="center">${portraitImg(dg.hero, 'portrait big')}</div>
+    const ok = practice ? await UI.confirm('🔁 ' + esc(dg.n) + ' 연습', '<p>오늘과 같은 포켓몬·같은 맵으로 다시 도전합니다. 기록·보상이 없고, 주운 것도 가져오지 않습니다.</p>', '연습한다', '그만둔다') : await UI.confirm(esc(dg.n), `<div class="center">${portraitImg(dg.hero, 'portrait big')}</div>
       <p class="center">오늘의 주인공 <b>${esc(spName(dg.hero))}</b> Lv${ROGUE_LEVEL}</p><ul>
       <li>${dg.floors}층짜리 로그라이크 던전입니다. 오늘은 누구나 같은 포켓몬, 같은 맵으로 도전합니다.</li>
-      <li><b>하루 한 번</b>만 도전할 수 있습니다. 도중에 창을 닫으면 그 층의 처음부터 이어집니다.</li>
+      <li>기록·보상은 <b>하루 한 번</b>입니다 (그 뒤로는 연습할 수 있어요). 도중에 창을 닫으면 그 층의 처음부터 이어집니다.</li>
       <li>가방은 오랭열매 2개, 사과 1개, 자갈 5개로 시작합니다. 내 캐릭터와 가방은 그대로 보존됩니다.</li>
       <li>보상: 도달한 층 × ₽${Progress.DAILY_REWARD.floor} (완주하면 ₽${Progress.DAILY_REWARD.clear} 추가). 쓰러져도 받을 수 있어요.</li></ul>`, '도전한다', '그만둔다');
     if (!ok) return;
     const p = makeCreature(dg.hero, ROGUE_LEVEL, { player: true });
     p.belly = 100;
-    const run = { dungeon: 'daily', daily: dg.date, floor: 1, mode: 'rogue', p, bag: [{ id: 'oran', n: 1 }, { id: 'oran', n: 1 }, { id: 'apple', n: 1 }, { id: 'gravel', n: 5 }], money: 0, done: [], turns: 0, kills: 0 };
-    // 시작하자마자 기록을 남겨서 다시 도전하지 못하게 한다
-    save.daily = { date: dg.date, sp: dg.hero, floor: 1, clear: false, turns: 0, lv: ROGUE_LEVEL, kills: 0 };
+    const run = { dungeon: 'daily', daily: dg.date, floor: 1, mode: 'rogue', p, bag: [{ id: 'oran', n: 1 }, { id: 'oran', n: 1 }, { id: 'apple', n: 1 }, { id: 'gravel', n: 5 }], money: 0, done: [], turns: 0, kills: 0, ...(practice ? { practice: true } : {}) };
+    // 시작하자마자 기록을 남겨서 다시 도전하지 못하게 한다 (연습은 남기지 않는다)
+    if (!practice) save.daily = { date: dg.date, sp: dg.hero, floor: 1, clear: false, turns: 0, lv: ROGUE_LEVEL, kills: 0 };
     persist();
     show('dungeon-screen');
     Dungeon.enter(run);
@@ -3318,7 +3333,7 @@ const Game = (() => {
   const D2rule = r => { const k = r && r.eRules && r.floor > 10 ? r.eRules[Math.floor((r.floor - 1) / 10)] : null; return k ? ` · ${ENDLESS_RULES[k].icon} ${ENDLESS_RULES[k].n}: ${ENDLESS_RULES[k].d}` : ''; };
   function saveRunSnapshot(r) {
     const p = r.p;
-    save.run = { dungeon: r.dungeon, floor: r.floor, bossDone: r.bossDone === r.floor ? r.floor : null, bossPick: r.bossPick && r.bossPick.floor === r.floor ? r.bossPick : null, mode: r.mode, bag: r.bag, money: r.money, done: r.done, daily: r.daily || null, turns: r.turns || 0, kills: r.kills || 0, carried: r.carried || null, stats: r.stats || null,
+    save.run = { dungeon: r.dungeon, floor: r.floor, bossDone: r.bossDone === r.floor ? r.floor : null, bossPick: r.bossPick && r.bossPick.floor === r.floor ? r.bossPick : null, mode: r.mode, bag: r.bag, money: r.money, done: r.done, daily: r.daily || null, practice: r.practice || undefined, turns: r.turns || 0, kills: r.kills || 0, carried: r.carried || null, stats: r.stats || null,
       ...(r.hard ? { hard: true, hardLv: r.hardLv, rsp: p.rsp, kit: r.kit } : {}),
       p: { sp: p.sp, lv: p.lv, exp: p.exp, hp: p.hp, belly: p.belly, status: p.status, statusT: p.statusT, moves: ownMoves(p).map(m => m.id), pp: ownMoves(p).map(m => m.pp), ability: p.baseAbility ?? p.ability, held: p.held || null, tms: p.tms || [], shiny: !!p.shiny, boost: p.boost || null, form: p.selForm || null } };
     save.run.shinySeed = r.shinySeed && r.shinySeed.floor === r.floor ? r.shinySeed : null;
@@ -3354,7 +3369,7 @@ const Game = (() => {
       a.hp = clamp(x.hp, 1, a.maxhp); a.fainted = !!x.fainted; a.status = x.status; a.statusT = x.statusT;
       return a;
     });
-    const run = { dungeon: s.dungeon, floor: s.floor, bossDone: s.bossDone || null, bossPick: s.bossPick || null, shinySeed: s.shinySeed || null, tactic: s.tactic || undefined, tactics: s.tactics || undefined, mode: s.mode, p, bag: s.bag, money: s.money, done: s.done, daily: s.daily || null, turns: s.turns || 0, kills: s.kills || 0, party, carried: s.carried || null, stats: s.stats || null };
+    const run = { dungeon: s.dungeon, floor: s.floor, bossDone: s.bossDone || null, bossPick: s.bossPick || null, shinySeed: s.shinySeed || null, tactic: s.tactic || undefined, tactics: s.tactics || undefined, mode: s.mode, p, bag: s.bag, money: s.money, done: s.done, daily: s.daily || null, practice: s.practice || undefined, turns: s.turns || 0, kills: s.kills || 0, party, carried: s.carried || null, stats: s.stats || null };
     if (s.startBag) Object.assign(run, { startBag: s.startBag, eb: s.eb || undefined, eRules: s.eRules || undefined, eBossUsed: s.eBossUsed || undefined, eTickets: s.eTickets || 0, eGum: s.eGum || 0, eFt: s.eFt || undefined });
     show('dungeon-screen');
     Dungeon.enter(run);
@@ -3362,7 +3377,7 @@ const Game = (() => {
   function abandonSavedRun() {
     const s = save.run;
     if (s.daily) Progress.setupDaily(s.daily);
-    const fake = { dungeon: s.dungeon, floor: s.floor, mode: s.mode, bag: s.bag, money: s.money, done: [], daily: s.daily || null, turns: s.turns || 0, kills: s.kills || 0, hard: !!s.hard, startBag: s.startBag || undefined, eTickets: s.eTickets || 0,
+    const fake = { dungeon: s.dungeon, floor: s.floor, mode: s.mode, bag: s.bag, money: s.money, done: [], daily: s.daily || null, practice: s.practice || undefined, turns: s.turns || 0, kills: s.kills || 0, hard: !!s.hard, startBag: s.startBag || undefined, eTickets: s.eTickets || 0,
       kit: s.kit || [], p: { sp: s.p.sp, rsp: s.rsp, lv: s.p.lv, exp: s.p.exp, ability: s.p.ability, held: s.p.held, moves: s.p.moves.map(id => ({ id })) } };
     finishRun(fake, 'faint');
   }
@@ -3855,7 +3870,9 @@ const Game = (() => {
         lines.push(`레벨은 유지된다. (Lv${p.lv})`);
       }
     } else {
-      if (success) {
+      if (r.practice) {   // 오늘의 도전 연습 (v1.07): 주운 것·돈은 가져오지 않는다
+        save.money = Math.max(0, save.money - r.money);
+      } else if (success) {
         const items = r.bag.filter(b => ITEMS[b.id]).concat(p.held ? [{ id: p.held, n: 1 }] : []);
         // 들고 들어간 지닌 물건은 캐릭터가 계속 지니고 있으므로 하나 빼고 가져온다 (복사되지 않게)
         if (r.carried) { const k = items.findIndex(b => b.id === r.carried); if (k >= 0) { if (items[k].n > 1) items[k] = { ...items[k], n: items[k].n - 1 }; else items.splice(k, 1); } }
@@ -3874,7 +3891,11 @@ const Game = (() => {
         save.money = Math.max(0, save.money - r.money);
         lines.push('쓰러져서 아무것도 가져오지 못했다...');
       }
-      if (dg.daily) {
+      if (dg.daily && r.practice) {   // 연습: 공식 기록·보상 없이 오늘의 연습 최고만
+        const pb = save.dailyPractice && save.dailyPractice.date === r.daily ? save.dailyPractice : null, clear = outcome === 'clear';
+        if (!pb || reached > pb.floor || (reached === pb.floor && (r.turns || 0) < pb.turns)) save.dailyPractice = { date: r.daily, floor: reached, turns: r.turns || 0, clear };
+        lines.push(`🔁 연습: <b>${reached}F</b>${clear ? ' 완주!' : ''} · ${r.turns || 0}턴 (오늘 연습 최고 ${save.dailyPractice.floor}F · ${save.dailyPractice.turns}턴)`);
+      } else if (dg.daily) {
         const { rec, reward } = Progress.recordDaily(r, outcome, reached);
         lines.push(`오늘의 도전 기록: <b>${rec.floor}F</b>${rec.clear ? ' 완주!' : ''} · ${rec.turns}턴 · ${rec.kills}마리 쓰러뜨림`);
         lines.push(`도전 보상 ₽${reward}`);
