@@ -3323,7 +3323,7 @@ const Game = (() => {
 
   // 던전 층수가 줄었을 때(v0.87 테마 던전 30 → 25층): 진행 중인 탐험·임무·구조 요청의 층을 마지막 층까지로 맞춘다
   function fitFloors(s) {
-    const fit = o => { const dg = o && dungeonById(o.dungeon); if (dg && o.floor > dg.floors) o.floor = dg.floors; };
+    const fit = o => { const dg = o && dungeonById(o.dungeon); if (dg && !dg.endless && o.floor > dg.floors) o.floor = dg.floors; };   // 끝없는 던전은 floors가 '적이 Lv100이 되는 층'일 뿐이라 맞추지 않는다 (v1.06 보강: 51층 이상에서 이어하면 50층으로 돌아가던 문제)
     if (s.run) { const was = s.run.floor; fit(s.run); if (s.run.floor !== was) { s.run.bossDone = null; s.run.bossPick = null; } }
     (s.missions && s.missions.accepted || []).forEach(fit); (s.missions && s.missions.board || []).forEach(fit);
     fit(s.sos);
