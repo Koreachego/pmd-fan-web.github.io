@@ -7,15 +7,8 @@ const ENV = location.protocol === 'file:' || /^(localhost|127\.0\.0\.1|\[::1\])$
 // Firebase 설정: 프로젝트를 만든 뒤 콘솔의 "웹 앱 설정" 값을 붙여 넣는다 (이 값은 공개되어도 되는 값이다)
 // 둘 다 무료 요금제(Spark)로만 사용한다. Blaze로 업그레이드하지 않는다.
 const FIREBASE_CONFIG = {
-  // 개발용 프로젝트 (localhost / 파일로 열었을 때)
-  dev: {
-    apiKey: 'AIzaSyC9ojnyB6RGPNrFN7oX0tnev6XHUXjUV88',
-    authDomain: 'pmd-web-dev.firebaseapp.com',
-    projectId: 'pmd-web-dev',
-    storageBucket: 'pmd-web-dev.firebasestorage.app',
-    messagingSenderId: '616176015485',
-    appId: '1:616176015485:web:80eda5ff81f6226700b914',
-  },
+  // 개발용 프로젝트 (localhost / 파일로 열었을 때): 저장소에 올리지 않고 내 컴퓨터의 js/config.local.js에서 넣는다 (v1.06 보강)
+  dev: null,
   // 서비스용 프로젝트 (GitHub Pages 사이트)
   prod: {
     apiKey: 'AIzaSyC7P5xmsOcNr0ruNpDKxCY_cZySwhUNNKA',
@@ -26,7 +19,10 @@ const FIREBASE_CONFIG = {
     appId: '1:955480535200:web:10b20c39b5c857153619c5',
   },
 };
-const ONLINE_CONFIG = FIREBASE_CONFIG[ENV];
+// 개발 환경이면 내 컴퓨터에만 있는 js/config.local.js를 불러와 FIREBASE_CONFIG.dev를 채운다 (없으면 온라인 기능만 꺼진다)
+if (ENV === 'dev') document.write('<script src="js/config.local.js"><\/script>');
+// 온라인 기능이 쓰는 설정 (config.local.js가 나중에 채우므로 쓸 때마다 읽는다)
+Object.defineProperty(window, 'ONLINE_CONFIG', { get: () => FIREBASE_CONFIG[ENV] || null });
 
 // App Check (reCAPTCHA v3 사이트 키): 이 사이트에서 온 요청만 서버가 받게 한다 (스크립트로 한도를 다 쓰는 공격 방지)
 // 사이트 키는 공개되어도 되는 값이다. 비어 있으면 App Check를 쓰지 않는다 (내 컴퓨터 테스트는 쓰지 않음)

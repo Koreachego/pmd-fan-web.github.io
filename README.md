@@ -89,7 +89,7 @@ This is a non-commercial fan game. Content will be removed promptly upon request
 - 버전이 바뀌면 세이브를 자동으로 백업(최근 3개)한 뒤 변환합니다. 세이브 구조를 바꿀 때는 `js/main.js`의 `MIGRATIONS`에 변환을 추가하세요. 옛 버전 화면이 새 버전 세이브를 덮어쓰지 않도록 막혀 있습니다.
 
 ### 온라인 기능 (Firebase, 무료 Spark 요금제)
-- `js/config.js`: `localhost`·파일로 열면 개발용, 실제 사이트면 서비스용 프로젝트. 둘 다 Spark 요금제로만 씁니다 (Blaze로 올리지 않음).
+- `js/config.js`: 실제 사이트면 서비스용 프로젝트. `localhost`·파일로 열면 개발용 프로젝트인데, 개발용 설정은 저장소에 올리지 않고 내 컴퓨터의 `js/config.local.js`(`.gitignore`)에서 `FIREBASE_CONFIG.dev`를 채웁니다. 이 파일이 없으면 온라인 기능만 꺼지고 게임은 그대로 됩니다.
 - 보안 규칙은 `firestore.rules`. 바꾸면 콘솔의 Firestore → 규칙에 붙여 넣고 게시하세요 (두 프로젝트 모두). 새 코드와 규칙이 함께 바뀌면 규칙을 먼저 올립니다.
 - 서버 사용량 절약: 클라우드 저장은 던전을 마칠 때·창을 닫을 때·마을에서 10분마다, 규칙으로 20초에 한 번까지. 접속 표시는 10분마다.
 - App Check는 `js/config.js`의 `APPCHECK_SITE_KEY`에 reCAPTCHA v3 사이트 키를 넣으면 켜집니다 (지금은 꺼져 있음).
