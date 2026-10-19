@@ -3,15 +3,16 @@
 
 // 게임 버전: 업데이트할 때 올리고, index.html의 ?v= 숫자도 같이 올린다
 // (친구와 구조 코드·오늘의 도전을 주고받으려면 버전이 같아야 한다)
-const GAME_VERSION = '1.06';   // 0.102(=1.02) 다음부터 1.xx (cmpVer로 비교하면 1.06 > 0.102)
+const GAME_VERSION = '1.07';   // 0.102(=1.02) 다음부터 1.xx (cmpVer로 비교하면 1.07 > 0.102)
 // 버전 비교: '0.25' > '0.9' 처럼 숫자로 비교한다
 function cmpVer(a, b) {
   const x = String(a).split('.').map(Number), y = String(b).split('.').map(Number);
   for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return Math.sign(d); }
   return 0;
 }
-const GAME_DATE = '2026-10-17';
+const GAME_DATE = '2026-10-19';
 const VERSION_NOTES = [
+  ["1.07", ["교환 탭에서 지닌 도구(타입 강화 도구 포함)를 티켓 30장으로 바꿀 수 있습니다", "창고를 5000칸까지 늘릴 수 있습니다. 1000칸부터는 100칸씩, 값은 ₽197,050으로 고정입니다"]],
   ["1.06", ["끝없는 던전 51층 이상에서 이어하면 50층으로 돌아가던 문제를 고쳤습니다", "임무 게시판에서 수락해도 게시판이 제자리에 있습니다", "오늘의 도전을 한 뒤에도 같은 맵으로 연습할 수 있습니다 (기록·보상 없음)", "영양제를 던전에서도 먹을 수 있습니다 (동료에게도)", "구미·영양제로 오를 능력치가 없으면 먹지 않습니다. 던전에서 최대인데도 먹어서 없어지던 문제를 고쳤습니다", "끝없는 던전의 적은 하드모드처럼 기술을 고르고, 보스는 하드모드 배율(HP 7배·능력치 1.25배)입니다", "랭킹 기록을 누르면 레벨·쓰러뜨림·구미·10층마다 턴을 볼 수 있습니다", "끝없는 던전 랭킹을 추가했습니다 (던전 카드의 🏆 랭킹). 상위 10명과 내 순위(상위 몇 %)를 볼 수 있고, 로그인하면 최고 기록이 올라갑니다", "끝없는 던전이 끝나면 도달한 층에 따라 티켓을 받습니다 (10층부터, 깊을수록 더 많이). 결과창에 받은 티켓 합계가 나옵니다", "와이드포스: 사이코필드에서는 자동 전투와 동료가 주변 범위 기술로 보고 씁니다", "끝없는 던전 정보의 포켓몬 목록을 50층까지와 51층부터로 나눴습니다", "끝없는 던전에서 층에 따라 강한 포켓몬만 나오지 않고, 층마다 12종이 나옵니다. 50층 뒤로는 최종 진화한 포켓몬과 울트라비스트가 나오고, 패러독스 포켓몬도 자주 나옵니다", "동료도 함정을 밟으면 함정이 작동합니다. 발견한 함정은 피해서 따라옵니다", "청정의 탑 안내를 간단하게 정리했습니다", "던전 탭에서 최종 보스·중간 보스 안내를 뺐습니다. 숨은 던전에는 ✨ 숨은 던전 표시가 붙습니다"]],
   ["1.05", ["새 로그라이크 던전 ♾ 끝없는 던전을 추가했습니다 (에리어 제로 최심부 클리어 후 열림). Lv1로 시작해 끝없이 내려가며, 이 던전에서만 레벨 한계가 없습니다. 자세한 규칙은 가이드의 던전 규칙에 있습니다", "교환 탭에서 전용 도구를 티켓으로 바꿀 때 확인 창이 뜹니다", "휴대폰에서 이름이 긴 기술 때문에 던전 화면이 옆으로 밀리던 문제를 고쳤습니다", "동료가 같은 편 전체의 기술을 보고 필드 기술을 씁니다. 같은 편이 깐 필드는 덮어쓰지 않습니다", "탐험대 상태 창에서 기술마다 자동 사용을 끌 수 있습니다. 끈 기술은 자동 전투와 동료가 쓰지 않습니다", "마을 가방 목록의 창고로·버리기 버튼이 늘 같은 자리에 있습니다", "가이드에 🏘 마을·기타 항목을 추가하고, 던전 관련 내용을 던전 규칙으로 옮겼습니다", "던전에 들어설 때 날씨 설명 없이 이름만 알려 줍니다"]],
   ["1.04", ["도감의 '던전 그림이 없는 포켓몬' 안내를 고쳤습니다. 초상화도 없는 모습(메가앱솔Z 등)은 원래 모습의 초상화를 쓴다고 적고, 메가진화·다른 모습은 '진화 전 모습' 대신 '원래 모습'으로 적습니다", "마중물·피뢰침·타오르는불꽃 같은 리더 특성이 보스·중간 보스를 고를 때도 적용됩니다. 그 타입 포켓몬이 2배 잘 나옵니다 (예: 용의 나선탑 20층 중간 보스에서 마중물 리더면 케르디오). 아직 영입하지 않은 포켓몬 2배와 함께 곱해집니다", "기본 PP가 5인 공격 기술(106개)의 기본 PP가 10이 됩니다. 파괴광선·오버히트·인파이트·스톤에지와 전설의 전용기 등. 회복·날씨·잠자기 같은 변화 기술은 5 그대로입니다. 숙련도로 늘어나는 PP도 함께 늘고, 진행 중인 탐험은 다음 탐험부터 적용됩니다", "용성군이 주변(3칸 안)의 모든 적에게 맞는 범위기가 됩니다", "필드(그래스필드·미스트필드 등)가 30턴에서 100턴 동안 이어집니다", "설정(⚙ 정보 → 플레이)에 '✨ 이로치 자동 적용'을 추가했습니다. 켜면 이로치를 얻었을 때 그 진화 계열의 영입한 포켓몬이 바로 이로치 모습이 되고, 이로치를 얻은 계열은 새로 영입해도 이로치로 합류합니다. 켤 때 이미 이로치를 얻은 계열에도 적용됩니다", "능력치 배율이 없는 전용 도구를 강화할 때, 주인이 특수 쪽(종족값 특수공격이 공격보다 높음)이면 공격 대신 특수공격이 오릅니다: 쪽빛구슬·스텔라결정·울트라네크로Z·럭키펀치. 주홍구슬·대파·녹슨검 등은 그대로 공격", "마을의 동료 목록에 ▲▼(캐릭터 탭은 ◀▶) 버튼을 추가했습니다. 빼고 다시 넣지 않아도 동료 순서(던전에서 따라오는 순서)를 바꿀 수 있습니다", "동료가 미스트필드 같은 필드 기술을 능력 올리기보다 먼저 씁니다 (지원 위주 포켓몬이 능력을 다 올린 뒤에야 필드를 깔던 문제)", "소란피기·역린처럼 몇 턴 이어지는 기술을 쓰는 중에 기술 칸을 바꾸면, 바뀐 칸의 기술을 PP 없이 끝없이 쓰던 문제를 고쳤습니다. 원래 기술을 이어서 쓰고, 잊었으면 멈춥니다", "스케일샷·씨기관총 같은 연속기가 맞을 때마다 데미지 숫자를 따로 띄웁니다 (예전에는 합친 숫자 하나만 떠서 한 번만 맞는 것처럼 보였습니다)", "임무 대상(구조할 포켓몬·수배범·의뢰품)이 층에 없으면 다시 놓습니다. 층에 들어설 때와 20턴마다 확인합니다", "모든 증표가 지닌 포켓몬의 지금 타입 기술을 올립니다: 진화형마다(스라크 벌레·비행, 핫삼 벌레·강철, 사마자르 벌레·바위), 메가진화 등으로 타입이 바뀌면 그 타입으로 (한 타입 1.3배, 두 타입 1.2배씩)"]],
@@ -129,16 +130,17 @@ const SPRITE_BASE = 'https://cdn.jsdelivr.net/gh/PMDCollab/SpriteCollab@master';
 const spriteFallback = url => url.replace(SPRITE_BASE, SPRITE_RAW);
 const TILE = 24;
 const BAG_BASE = 16, BAG_STEP = 4, BAG_LIMIT = 48;
-const STORAGE_BASE = 300, STORAGE_STEP = 40, STORAGE_LIMIT = 1000;   // v0.44: 기본 40 → 300. v0.100: 한 번에 20 → 40칸, 최대 660 → 1000칸 (18단계, 마지막은 980 → 1000)
+const STORAGE_BASE = 300, STORAGE_STEP = 40, STORAGE_LIMIT = 5000;
+const STORAGE_OLD_LIMIT = 1000, STORAGE_BIG_STEP = 100;   // v1.07: 1000칸부터는 100칸씩, 값은 980→1000칸 확장 값으로 고정 (최대 5000칸)   // v0.44: 기본 40 → 300. v0.100: 한 번에 20 → 40칸, 최대 660 → 1000칸 (18단계, 마지막은 980 → 1000)
 const OLD_STORAGE_BASE = 40;   // v0.43까지의 기본 (옛 세이브의 확장 단계 계산용)
 const bagMax = () => (typeof Game !== 'undefined' && Game.save && Game.save.bagMax) || BAG_BASE;
 // 확장 비용: 가방은 확장할수록 두 배씩, 창고는 1.5배씩 (v0.100, ₽10 단위로 반올림)
 // 칸 수가 단계 사이에 있으면 (창고에 칸보다 많이 들어 있던 세이브 등) 지금 단계로 센다: 비용은 늘 정수, 확장하면 다음 단계 칸 수로 (v0.99 수정)
 const upStep = (cur, base, step) => Math.max(0, Math.floor((cur - base) / step));
 const bagUpgradeCost = cur => 300 * 2 ** upStep(cur, BAG_BASE, BAG_STEP);
-const storageUpgradeCost = cur => Math.round(200 * 1.5 ** upStep(cur, STORAGE_BASE, STORAGE_STEP) / 10) * 10;
+const storageUpgradeCost = cur => Math.round(200 * 1.5 ** upStep(Math.min(cur, STORAGE_OLD_LIMIT - 1), STORAGE_BASE, STORAGE_STEP) / 10) * 10;
 const bagNext = cur => BAG_BASE + (upStep(cur, BAG_BASE, BAG_STEP) + 1) * BAG_STEP;
-const storageNext = cur => STORAGE_BASE + (upStep(cur, STORAGE_BASE, STORAGE_STEP) + 1) * STORAGE_STEP;
+const storageNext = cur => cur >= STORAGE_OLD_LIMIT ? Math.min(STORAGE_LIMIT, cur + STORAGE_BIG_STEP) : Math.min(STORAGE_OLD_LIMIT, STORAGE_BASE + (upStep(cur, STORAGE_BASE, STORAGE_STEP) + 1) * STORAGE_STEP);
 const START_LEVEL = 5;
 const ROGUE_LEVEL = 5;
 const PURE_TICKETS = 200;   // 청정의 탑 클리어 보상 티켓
@@ -1182,9 +1184,13 @@ const JUNK_EXCLUDE = new Set(['quest', 'candy', 'stone', 'link', 'abcapsule', 'a
 const isJunk = id => { const it = ITEMS[id]; return !!it && !it.tm && !it.held && !it.mega && !it.sig && !it.vit && !it.gummy && !it.stack && !it.formTo && !JUNK_EXCLUDE.has(id); };
 const JUNK_LEAVE_ALL = 999;   // 티켓 만들기의 '남길 개수' 최대 (모두 남기기)
 // 티켓 교환: [물건, 티켓 장수]
+const HELD_TRADE_TICKETS = 30;   // 교환에서 지닌 도구 하나에 티켓 장수
 const TICKET_TRADES = [['fullrestore', 2], ['reviver', 3], ['abcapsule', 6], ['candy', 6],
   ...Object.keys(VITAMINS).map(id => [id, 6]), ['eggtm', 6], ['abpatch', 8], ['masterbook', 8],
-  ...Object.keys(GUMMIES).filter(id => id !== 'rainbowgummy').map(id => [id, 8]), ['rainbowgummy', 30]];
+  ...Object.keys(GUMMIES).filter(id => id !== 'rainbowgummy').map(id => [id, 8]), ['rainbowgummy', 30],
+  // 지닌 도구 (v1.07): 타입 강화 도구(전용 도구 강화 재료) 먼저, 그다음 일반 지닌 도구. 전용 도구·메가스톤은 따로
+  ...Object.values(TYPE_BOOST_ITEM).map(id => [id, HELD_TRADE_TICKETS]),
+  ...HELD_SHOP_POOL.filter(id => !Object.values(TYPE_BOOST_ITEM).includes(id)).map(id => [id, HELD_TRADE_TICKETS])];
 const GACHA_BONUS = { 10: 1 };   // 10번 뽑기: 1번 더 (티켓 10장으로 11개)
 // 뽑기 (티켓 1장): [가중치, 물건 후보]. 가중치 합 1000 = 확률 ‰
 const GACHA_TABLE = [
