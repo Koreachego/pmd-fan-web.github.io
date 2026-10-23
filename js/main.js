@@ -148,7 +148,7 @@ const Game = (() => {
     // 도감: 캐릭터 목록에 있는 포켓몬은 만난 것으로 기록해 둔다 (퇴화하거나 진화해서 목록에서 빠져도 남게, v0.102 보강)
     s.dex = s.dex || { seen: {}, beaten: {} }; s.dex.seen = s.dex.seen || {};
     for (const k of Object.keys(s.roster || {})) if (!s.dex.seen[k]) s.dex.seen[k] = 1;
-    for (const sp of NO_RECRUIT) {
+    for (const sp of NO_RECRUIT.filter(id => String(id) !== '890-1')) {
       const ch = s.roster && s.roster[sp]; if (!ch) continue;
       if (ch.held) s.storage[ch.held] = (s.storage[ch.held] || 0) + 1;
       delete s.roster[sp];
