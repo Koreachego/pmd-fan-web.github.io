@@ -3874,6 +3874,7 @@ const Dungeon = (() => {
       case 'stairs': tryStairs(); return true;
       case 'bag': openBag(); return true;
       case 'menu': Game.dungeonMenu(); return true;
+      case 'dginfo': Game.dungeonMenu('info'); return true;
       case 'help': showHelp(); return true;
       case 'missions': Game.showMissions(); return true;
       case 'map': toggleMap(true); return true;
@@ -4104,6 +4105,7 @@ const Dungeon = (() => {
       <tr><td>스피드</td><td>상대보다 빠를수록 명중률이 오르고 상대의 공격을 잘 피한다 (최대 ±20%). 마비는 스피드 절반.</td></tr>
       <tr><td>날씨</td><td>던전에 따라 층마다 날씨가 생긴다. 화면 위 날씨 아이콘에 마우스를 올리면 효과를 볼 수 있다.</td></tr>
       <tr><td>가방</td><td>I / B</td></tr>
+      <tr><td>던전 정보</td><td>Y</td></tr>
       <tr><td>메뉴</td><td>Esc / M</td></tr>
       <tr><td>🎮 컨트롤러</td><td>${GP_GUIDE_SHORT}</td></tr></table>`);
   }
@@ -4185,12 +4187,12 @@ const Dungeon = (() => {
     if (D.auto) stopAuto();
     if (busy() && k !== 'menu') return;
     ({ attack: () => act({ t: 'attack' }), explore: () => startAuto('explore'), fight: () => startAuto('fight'), tactic: partyMenu, rest: () => startAuto('rest'),
-      wait: () => act({ t: 'wait' }), stairs: tryStairs, bag: openBag, menu: () => Game.dungeonMenu(), help: showHelp,
+      wait: () => act({ t: 'wait' }), stairs: tryStairs, bag: openBag, menu: () => Game.dungeonMenu(), dginfo: () => Game.dungeonMenu('info'), help: showHelp,
       mission: () => Game.showMissions(), map: () => toggleMap(), look: toggleLook, quick: quickUse, padset: padSettings, gpguide: gamepadGuide, moveorder: moveOrder })[k]?.();
   }
   // 조이스틱 모드의 X: 아래 버튼들을 모은 행동 메뉴 (조이스틱 모드에서는 아래 버튼 줄을 숨긴다)
   const VP_MENU = [['explore', '🧭 자동 탐색'], ['look', '🔍 조사'], ['bag', '🎒 가방'], ['quick', '⭐ 빠른사용'], ['stairs', '🪜 계단'], ['wait', '⏳ 대기'], ['rest', '💤 휴식'], ['map', '🗺 지도'],
-    ['mission', '📜 임무'], ['tactic', '🤝 동료'], ['moveorder', '🔀 기술 순서'], ['padset', '⚙ 조작'], ['gpguide', '🎮 컨트롤러'], ['menu', '☰ 메뉴']];
+    ['mission', '📜 임무'], ['dginfo', 'ℹ 던전 정보'], ['tactic', '🤝 동료'], ['moveorder', '🔀 기술 순서'], ['padset', '⚙ 조작'], ['gpguide', '🎮 컨트롤러'], ['menu', '☰ 메뉴']];
   function vpMenu(viaPad) {
     stopAuto();
     const onBtn = Object.values(vpSet().btns);   // ABXY에 둔 행동은 빼고 보여 준다 (조작·메뉴는 늘)
@@ -4247,7 +4249,7 @@ const Dungeon = (() => {
   // ABXY에 둘 수 있는 행동: [버튼에 쓰는 짧은 이름, 설정 창의 이름]
   const VP_ACTS = { attack: ['공격', '⚔ 공격 (길게 누르면 기술)'], explore: ['자동', '🧭 자동 탐색 (다시 누르면 멈춤)'], vpmenu: ['행동', '📋 행동 메뉴'], look: ['조사', '🔍 조사'],
     stairs: ['계단', '🪜 계단'], quick: ['빠른', '⭐ 빠른사용'], bag: ['가방', '🎒 가방'], wait: ['대기', '⏳ 대기'], rest: ['휴식', '💤 휴식'],
-    map: ['지도', '🗺 지도'], mission: ['임무', '📜 임무'], tactic: ['동료', '🤝 동료'], menu: ['메뉴', '☰ 메뉴'] };
+    map: ['지도', '🗺 지도'], mission: ['임무', '📜 임무'], dginfo: ['정보', 'ℹ 던전 정보'], tactic: ['동료', '🤝 동료'], menu: ['메뉴', '☰ 메뉴'] };
   const VP_BTNS = { a: 'attack', b: 'explore', x: 'vpmenu', y: 'look' };
   const VP_DEFAULT = { js: 100, ab: 85, vib: true, order: [1, 2, 3, 4], btns: VP_BTNS };
   const VP_POS = { portrait: { js: [27, 52], abxy: [76, 52] }, landscape: { js: [16, 52], abxy: [84, 52] } };   // ↻(face)는 옮긴 적이 없으면 조이스틱 왼쪽 위에 따로 둔다

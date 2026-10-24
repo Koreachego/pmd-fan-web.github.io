@@ -631,7 +631,7 @@ const Game = (() => {
       await flushThanks();
       const s = save.sos;
       // 게시판에 올린 표시가 세이브에서 빠진 요청 (예전 클라우드 동기화 버그): 서버에서 내 요청을 찾아 다시 잇는다 (접속마다 한 번)
-      if (s && !s.online && !s.revived && !sosRelinked) {
+      if (s && !s.online && !s.revived && !s.friend && !sosRelinked) {   // 친구에게만 부탁한 요청은 서버에 없다
         sosRelinked = true;
         const docId = await Online.findMySOS(s.id);
         if (docId) { s.docId = docId; s.online = true; persist(); }
@@ -2460,6 +2460,9 @@ const Game = (() => {
         if (ok) { sosPostedNote(s); return; }
         renderTown();
       } if (save.sos) codeBox('🆘 SOS 코드', `<p>${esc(dungeonById(save.sos.dungeon).n)} ${save.sos.floor}F — ${esc(spName(save.sos.sp))} Lv${save.sos.lv}</p>${save.sos.online ? '<p class="warn">지금 서버가 막혀 있어서 구조 게시판이 동작하지 않아요. 서버가 돌아올 때까지는 이 코드로 친구에게 구조를 부탁할 수 있어요.</p>' : ''}`, sosCode(save.sos)); return;
+      case 'sos-post': { const s = save.sos; if (!s || s.online || s.revived || !Online.loggedIn()) return;
+        if (!await UI.confirm('📋 구조 게시판에 올리기', '<p>이 구조 요청을 구조 게시판에 올립니다. 다른 탐험대도 구하러 올 수 있고, 친구는 지금 코드 그대로 구조할 수 있어요.</p>', '올린다', '그만둔다')) return;
+        if (await postMySOS(s)) { delete s.friend; persist(); renderTown(); sosPostedNote(s); } return; }
       case 'sos-giveup': return giveUpSOS();
       case 'sos-resume': return save.sos && save.sos.thx ? resumeSOS() : receiveAOKAgain();
       case 'aok-show': { const a = (save.aokSent || []).find(x => String(x.id) === arg); if (a) codeBox('✅ A-OK 코드', `<p>친구의 ${esc(spName(a.sp))} 구조 완료 코드입니다.</p>`, a.code); return; }
@@ -3397,9 +3400,11 @@ const Game = (() => {
       UI.open({
         title: '눈앞이 캄캄해졌다...',
         html: `<div class="center">${portraitImg(r.p.sp, 'portrait big', 'Pain', r.p.shiny)}</div>
-          <p>친구에게 <b>구조를 요청</b>할 수 있습니다. ${Online.loggedIn() ? '요청하면 <b>구조 게시판에 자동으로 올라가고</b>' : '요청하면 SOS 코드가 나오고'}, 구조될 때까지 아이템과 돈을 잃지 않고 기다립니다.
+          <p><b>구조를 요청</b>할 수 있습니다. ${Online.loggedIn() ? '<b>구조 게시판</b>에 올리면 다른 탐험대가 구하러 오고, <b>친구에게만</b> 부탁하면 SOS 코드가 나옵니다' : '요청하면 SOS 코드가 나오고'}. 구조될 때까지 아이템과 돈을 잃지 않고 기다립니다.
           기다리는 동안에도 다른 던전은 탐험할 수 있어요.</p>`,
-        choices: [{ label: Online.loggedIn() ? '🆘 구조를 요청한다 (구조 게시판에 올리기)' : '🆘 구조를 요청한다 (SOS 코드 만들기)', fn: () => createSOS(r) }, { label: '포기하고 돌아간다', fn: () => finishRun(r, 'faint') }],
+        // 게시판 / 친구에게만 (v1.08): 친구끼리 코드로 구하려는 사람은 게시판에 올리지 않는다
+        choices: [...(Online.loggedIn() ? [{ label: '📋 구조 게시판에 올리기', fn: () => createSOS(r, true) }, { label: '👥 친구에게만 부탁하기 (SOS 코드)', fn: () => createSOS(r, false) }]
+          : [{ label: '🆘 구조를 요청한다 (SOS 코드 만들기)', fn: () => createSOS(r, false) }]), { label: '포기하고 돌아간다', fn: () => finishRun(r, 'faint') }],
         cancel: false,
       });
       return;
@@ -3426,11 +3431,12 @@ const Game = (() => {
   }
   function sosCode(s) { return Codes.encode('sos', { id: s.id, dg: DUNGEONS.findIndex(d => d.id === s.dungeon), fl: s.floor, sp: s.sp, lv: s.lv, sh: s.shiny ? 1 : 0 }); }
 
-  async function createSOS(r) {
+  async function createSOS(r, board) {
     const p = r.p;
     const s = {
       id: Codes.newId(), dungeon: r.dungeon, floor: r.floor, sp: p.sp, lv: p.lv, shiny: !!p.shiny, day: save.day, created: Date.now(),
       snap: { bag: r.bag, money: r.money, done: r.done, held: p.held || null, stats: r.stats || null },
+      ...(board ? {} : { friend: true }),   // 친구에게만 (v1.08): 게시판에 올리지 않은 요청
     };
     save.sos = s;
     save.mySOS = [...(save.mySOS || []), s.id].slice(-50);   // 내가 보낸 구조 요청 (포기한 뒤에도 내 코드로 구조하러 가지 못하게)
@@ -3441,30 +3447,33 @@ const Game = (() => {
     save.best[r.dungeon] = Math.max(save.best[r.dungeon] || 0, r.floor);
     save.run = null; save.day++; refreshDay(); persist();
     tab = 'mission'; renderTown();
-    let posted = false;
-    if (Online.loggedIn()) {
-      // 서버가 대답하지 않으면 (연결이 끊기면 쓰기가 실패하지 않고 계속 기다린다) SOS_POST_WAIT 뒤 코드를 먼저 보여 준다 (v0.95)
-      //  늦게라도 올라가면 그때 게시판 요청으로 이어 둔다 (코드와 게시판 둘 다 쓸 수 있다)
-      const post = Online.postSOS(s);
-      try {
-        const id = await Promise.race([post, new Promise(res => setTimeout(() => res(null), SOS_POST_WAIT))]);
-        if (id) { s.docId = id; s.online = true; posted = true; persist(); renderTown(); }
-        else {
-          UI.toast('구조 게시판 서버가 대답하지 않아요. 코드로 친구에게 부탁해 주세요.');
-          post.then(late => { if (late && save.sos === s && !s.revived) { s.docId = late; s.online = true; persist(); renderTown(); } }).catch(() => {});
-        }
-      } catch (e) { console.warn(e); UI.toast('구조 게시판에 올리지 못했어요. 코드로 친구에게 부탁해 주세요.'); }
-      // 쓰기는 됐어도 읽기 한도를 넘었으면 아무도 게시판을 못 본다: 읽어 보고 막혔으면 코드를 보여 준다
-      if (posted) { try { await Promise.race([Online.probeSOS(s.docId), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), SOS_POST_WAIT))]); } catch (e) { posted = false; UI.toast('구조 게시판을 지금 읽을 수 없어요. 코드로 친구에게 부탁해 주세요.'); } }
-    }
+    const posted = board && Online.loggedIn() ? await postMySOS(s) : false;
     // 게시판에 올라갔으면 코드를 보여 주지 않는다 (코드를 커뮤니티에 따로 올리는 일이 많았다. 게시판에서 사라지면 다시 코드가 나온다)
     if (posted) { sosPostedNote(s); return; }
     codeBox('🆘 SOS 코드', `<p>${esc(dungeonById(s.dungeon).n)} ${s.floor}F에서 쓰러진 <b>${esc(spName(s.sp))}</b> Lv${s.lv}의 구조 요청입니다.</p>
       <p>친구가 이 코드로 구조해 주면 <b>A-OK 코드</b>를 받게 됩니다. 그 코드를 임무 탭에 입력하면 쓰러진 층부터 이어서 탐험할 수 있어요.</p>`, sosCode(s));
   }
+  // 내 구조 요청을 게시판에 올린다: 쓰러졌을 때, 또는 친구에게만 부탁한 요청을 임무 탭에서 나중에 올릴 때 (v1.08)
+  async function postMySOS(s) {
+    let posted = false;
+    // 서버가 대답하지 않으면 (연결이 끊기면 쓰기가 실패하지 않고 계속 기다린다) SOS_POST_WAIT 뒤 코드를 먼저 보여 준다 (v0.95)
+    //  늦게라도 올라가면 그때 게시판 요청으로 이어 둔다 (코드와 게시판 둘 다 쓸 수 있다)
+    const post = Online.postSOS(s);
+    try {
+      const id = await Promise.race([post, new Promise(res => setTimeout(() => res(null), SOS_POST_WAIT))]);
+      if (id) { s.docId = id; s.online = true; posted = true; persist(); renderTown(); }
+      else {
+        UI.toast('구조 게시판 서버가 대답하지 않아요. 코드로 친구에게 부탁해 주세요.');
+        post.then(late => { if (late && save.sos === s && !s.revived) { s.docId = late; s.online = true; delete s.friend; persist(); renderTown(); } }).catch(() => {});
+      }
+    } catch (e) { console.warn(e); UI.toast('구조 게시판에 올리지 못했어요. 코드로 친구에게 부탁해 주세요.'); }
+    // 쓰기는 됐어도 읽기 한도를 넘었으면 아무도 게시판을 못 본다: 읽어 보고 막혔으면 코드를 보여 준다
+    if (posted) { try { await Promise.race([Online.probeSOS(s.docId), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), SOS_POST_WAIT))]); } catch (e) { posted = false; UI.toast('구조 게시판을 지금 읽을 수 없어요. 코드로 친구에게 부탁해 주세요.'); } }
+    return posted;
+  }
   function sosPostedNote(s) {
     UI.alert('🆘 구조 요청', `<p>${esc(dungeonById(s.dungeon).n)} ${s.floor}F에서 쓰러진 <b>${esc(spName(s.sp))}</b> Lv${s.lv}의 구조 요청입니다.</p>
-      <p>📋 <b>구조 게시판에 자동으로 올렸어요.</b> 게임 안의 다른 탐험대가 게시판에서 보고 구조하러 와요.</p>
+      <p>📋 <b>구조 게시판에 올렸어요.</b> 게임 안의 다른 탐험대가 게시판에서 보고 구조하러 와요.</p>
       <p class="warn">커뮤니티 등에 따로 구조 글이나 코드를 올리지 않아도 됩니다.</p>
       <p class="dim">누군가 구조하러 출발하거나 구조하면 임무 탭에서 자동으로 알려 드려요.</p>`);
   }
@@ -3501,9 +3510,10 @@ const Game = (() => {
         <div class="dim">가방 ${s.snap.bag.length}칸${s.snap.held ? ` · 지닌 물건 ${esc(ITEMS[s.snap.held].n)}` : ''}이 함께 기다리고 있습니다.</div>
         ${s.online && !s.revived ? (s.takenAt && s.takenAt > Date.now() - SOS_HOLD_MS
           ? `<div class="ok">🏃 다른 탐험대가 구조하러 출발했어요! (${Math.max(1, Math.round((Date.now() - s.takenAt) / 60000))}분 전) <span class="dim">구조하던 탐험대가 게임을 끄거나 30분 넘게 던전에 들어가지 않으면 다시 게시판에 올라가요.</span></div>`
-          : '<div class="dim">📋 구조 게시판에 올라가 있어요. 누군가 구조하러 가면 여기에 표시되고, 구조하면 자동으로 알려 드려요.</div>') : ''}
+          : '<div class="dim">📋 구조 게시판에 올라가 있어요. 누군가 구조하러 가면 여기에 표시되고, 구조하면 자동으로 알려 드려요.</div>')
+          : !s.revived && s.friend ? '<div class="dim">👥 친구에게만 부탁한 요청 (게시판에 없음)</div>' : ''}
         ${s.revived ? '' : `<div class="dim">🦨 ${sosAutoLeft(s) > 0 ? `${Math.ceil(sosAutoLeft(s) / 60000)}분 뒤에도` : '곧'} 구조하러 온 탐험대가 없으면 ${SOS_AUTO_NAME}가 대신 구조하러 와요.</div>`}</div>
-        ${s.revived ? '<button class="btn sm" data-act="sos-resume">이어서 탐험</button>' : `<button class="btn sm ghost" data-act="sos-show">${s.online && !Online.serverDown() ? '자세히' : 'SOS 코드'}</button>` + ' <button class="btn sm ghost danger" data-act="sos-giveup">포기</button>'}</div>`;
+        ${s.revived ? '<button class="btn sm" data-act="sos-resume">이어서 탐험</button>' : `<button class="btn sm ghost" data-act="sos-show">${s.online && !Online.serverDown() ? '자세히' : 'SOS 코드'}</button>` + (!s.online && Online.loggedIn() && !Online.serverDown() ? ' <button class="btn sm ghost" data-act="sos-post">📋 게시판에 올리기</button>' : '') + ' <button class="btn sm ghost danger" data-act="sos-giveup">포기</button>'}</div>`;
     }
     if (Online.enabled()) h += Online.loggedIn()
       ? '<div class="row"><span class="grow">📋 <b>구조 게시판</b> <span class="dim">다른 플레이어의 구조 요청을 골라서 구하러 갈 수 있어요.</span></span><button class="btn sm" data-act="sos-board">게시판 보기</button></div>'
